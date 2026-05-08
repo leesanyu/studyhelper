@@ -1,10 +1,86 @@
 # 节点 C：苏格拉底解答
 
-> 位置：Dify Chatflow → LLM 节点 C
-> 输入：题干文本 + 学科 + 知识点 + mode 参数
-> 输出：苏格拉底式引导解答（不直接给答案）+ 几何图形 Python 代码（如需要）
+> 位置：Dify Chatflow → LLM 节点（引导式解答 + 直接解答）
+> 输入（首轮）：`conversation.current_question` + `conversation.current_knowledge` + 用户上传题图（`sys.files`，如有）
+> 输入（继续引导）：`conversation.current_question/current_knowledge` + 对话历史（Memory）+ 用户最新回复 + 用户上传题图（`sys.files`，如有）
+> 输入（直接给答案）：`conversation.current_question/current_knowledge` + 用户请求（`sys.query`）+ 用户上传题图（`sys.files`，如有）
+> 输出：苏格拉底式引导解答（不直接给答案）/ 直接完整解答 + 几何图形 Python 代码（如需要）
 > 设计模式：CoT + Reflection + Tool Use（几何绘图）
 > 几何图形执行路径：节点 C 输出 Python 代码 → FastAPI 独立沙箱执行 → 生成图片 URL → 返回前端
+> 模型：解题节点统一使用 `qwen3.6-plus`，因为该模型在当前 Dify/Tongyi 插件 schema 中支持图片输入；`glm-5.1` 会导致图片在 LLM prompt 组装阶段被过滤。
+
+## 多轮对话机制
+
+通过会话变量保存题目上下文，再用 IF/ELSE + Question Classifier + VariableAssigner 实现多轮对话、直接解答和新题目切换。
+
+### 对话状态流转
+
+```
+首轮(新题目) → 引导中 → 引导中 → ... → 给出直接答案 → 继续追问/新题目
+                 ↓           ↓
+              继续引导     新题目(重新识别)
+```
+
+### 实际分支路由
+
+```
+Start → IF/ELSE (conversation.context_ready ≠ "true")
+  ├─ IF true (缺少题目上下文):
+  │    题目识别 → 解析题目 → 知识点提取 → 解析知识点
+  │    → VariableAssigner(写入current_question/current_knowledge, 设置context_ready=true)
+  │    → 解答方式分类
+  │       ├─ "引导式解答" → 引导式解答（首轮，无 Memory）
+  │       └─ "直接给答案" → 直接解答（无 Memory）→ VariableAssigner(设置topic_resolved="true")
+  │
+  └─ ELSE false (已有题目上下文):
+       Question Classifier (意图分类, temperature=0.3)
+         ├─ "继续引导" → 引导式解答（继续）(显式题目上下文 + Memory)
+         ├─ "直接给答案" → 直接解答（无 Memory）→ VariableAssigner(设置topic_resolved="true")
+         └─ "新题目" → 题目识别 → 解析题目 → 知识点提取 → 解析知识点 → VariableAssigner(覆盖上下文) → 解答方式分类
+
+引导式解答（首轮）/ 引导式解答（继续）/ 直接解答 → VariableAggregator → Answer
+```
+
+### 引导式解答拆分
+
+引导式解答拆为两个节点，因为 Dify LLM 节点的变量引用在变量不存在时会报错：
+
+| 节点 | user 消息 | 触发路径 |
+|------|----------|----------|
+| 引导式解答（首轮） | `{{#conversation.current_question#}}` + `{{#conversation.current_knowledge#}}` | 解答方式分类 → 引导式解答 |
+| 引导式解答（继续） | 显式注入 `current_question/current_knowledge`，最新回复由 Memory query 追加 | Question Classifier → 继续引导 |
+
+两个节点使用相同的 system prompt。首轮节点不配置 Memory，避免 Dify 自动追加原始 `sys.query`；继续节点开启 Memory，并通过会话变量显式注入题目与知识点。
+
+### 退出机制
+
+当用户明确要求直接给答案时（如"直接告诉我答案"、"别引导了"），Question Classifier 将意图分类为"直接给答案"，进入独立的"直接解答"节点：
+- **直接解答节点**：独立 LLM 节点，Prompt 要求直接给出完整答案和详细解题过程
+- **VariableAssigner**：给出直接答案后，将 `topic_resolved` 设为 `"true"`
+- 直接答案后保留 `current_question/current_knowledge`，用户继续追问时仍复用当前题目上下文；只有"新题目"分支才重建上下文。
+
+### Memory 配置
+
+- 引导式解答（首轮）和直接解答不配置 Memory，只使用干净的 `current_question/current_knowledge`
+- 引导式解答（继续）开启 Memory（`window.enabled = true`, `size = 10`）
+- 继续节点的 prompt_template 不手动写 `{{#sys.query#}}`，避免和 Memory query 追加重复
+- 引导式解答（首轮）、引导式解答（继续）和直接解答均开启 Vision，`variable_selector = ["1778214671822", "sys.files"]`，并使用 `qwen3.6-plus`，确保图形题不会在解题节点退化为纯文本题。
+
+### 会话变量
+
+| 变量名 | 类型 | 默认值 | 作用 |
+|--------|------|--------|------|
+| `context_ready` | string | `"false"` | 标记当前会话是否已有可复用题目上下文 |
+| `topic_resolved` | string | `"false"` | 标记当前话题是否已结束（给了直接答案） |
+| `dialogue_started` | string | `"false"` | 标记是否已开始过对话（首轮后设为 true） |
+| `current_question` | string | `""` | 当前题目的干净文本 |
+| `current_knowledge` | string | `""` | 当前题目的格式化知识点信息 |
+
+> 注：原计划使用 `sys.dialogue_count` 判断首轮，但 draft run 时该值始终为 1，改为会话变量 `dialogue_started` 控制。
+
+### 已知限制
+
+**直接解答不依赖 Memory**：Dify 的 LLM Memory 是 per-node 的，且只要节点配置 `memory` 就可能追加 `sys.query`。直接解答节点改为只使用会话变量中的题目上下文和用户最新请求，避免历史引导内容污染最终答案。
 
 ## Prompt
 
@@ -95,14 +171,14 @@
 
 ## 格式要求
 
-1. Markdown 格式，数学公式统一用 $$ 包裹
+1. Markdown 格式，行内数学公式用 $...$ 包裹，独立公式块用 $$...$$ 包裹
 2. 语气亲和、鼓励，像一位耐心的老师
 3. 不输出 JSON 或结构化标签
 4. 逐步引导时，每次回复不超过150字
 
 ## 示例（mode=step）
 
-题目：已知直角三角形两直角边长分别为$$3$$和$$4$$，求斜边长。
+题目：已知直角三角形两直角边长分别为$3$和$4$，求斜边长。
 
 内部推理：
 【思路】应用勾股定理
@@ -115,11 +191,11 @@
 
 **思路提示**：直角三角形的三条边之间有一个非常著名的关系，你还记得是什么吗？
 
-**引导提问**：如果两条直角边分别是 $$3$$ 和 $$4$$，你能用一个定理把斜边表示出来吗？
+**引导提问**：如果两条直角边分别是 $3$ 和 $4$，你能用一个定理把斜边表示出来吗？
 
 ## 示例（mode=framework）
 
-题目：已知直角三角形两直角边长分别为$$3$$和$$4$$，求斜边长。
+题目：已知直角三角形两直角边长分别为$3$和$4$，求斜边长。
 
 内部推理：
 【思路】应用勾股定理
@@ -140,7 +216,7 @@
 
 ## 示例（mode=cot_visible）
 
-题目：已知直角三角形两直角边长分别为$$3$$和$$4$$，求斜边长。
+题目：已知直角三角形两直角边长分别为$3$和$4$，求斜边长。
 
 回复：
 让我们一起来看看这道题的思考过程吧！
@@ -158,7 +234,7 @@
 
 ## 示例（几何题，mode=step）
 
-题目：在三角形ABC中，$$\angle C = 90°$$，$$AC = 5$$，$$BC = 12$$，D是AB的中点，求CD的长度。
+题目：在三角形ABC中，$\angle C = 90°$，$AC = 5$，$BC = 12$，D是AB的中点，求CD的长度。
 
 内部推理：
 【思路】利用直角三角形斜边中线定理（斜边中线等于斜边的一半）
@@ -222,6 +298,14 @@ plt.savefig('figure.png', bbox_inches='tight', pad_inches=0.1)
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
+| 多轮对话 | 会话变量上下文 + IF/ELSE + Question Classifier | 先判断是否已有题目上下文，再决定引导、直接答案或新题 |
+| 分支判断 | `context_ready ≠ "true"` | 缺少上下文才重走识别链路；`sys.dialogue_count` 在 draft run 中不可靠 |
+| 意图分类 | 两层 Question Classifier | 上下文构建后判定首轮引导/直接解答；已有上下文时判定继续/直接/新题 |
+| 退出机制 | 直接解答后保留上下文 | 给直接答案后仍支持继续追问，只有"新题目"分支重建上下文 |
+| 引导式解答拆分 | 首轮版 + 继续版 两个节点 | Dify LLM 变量引用在变量不存在时报错，首轮和非首轮输入变量不同 |
+| 信息传递 | `current_question/current_knowledge` + Memory | 所有解答节点显式注入题目上下文，继续版额外使用 Memory 获取历史 |
+| Memory 窗口 | 10 条 | 足够覆盖典型引导对话（3-5 轮），同时避免 token 超限 |
+| 直接解答 Memory | 不配置 Memory | 直接解答只使用干净题目上下文和用户最新请求，避免历史引导污染答案 |
 | 解答深度 | 三种 mode 可选（step/framework/cot_visible） | 用户可选逐步引导或分步框架，CoT 过程有教学价值但可选择是否展示 |
 | 语气风格 | 亲和鼓励型 | 面向中小学生 MVP，亲和感优先 |
 | 内部推理 | 结构化 CoT 模板 | 不是自由发散，固定4个字段控制篇幅 |

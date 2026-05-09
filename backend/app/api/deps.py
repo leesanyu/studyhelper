@@ -14,12 +14,9 @@ from app.services.assets import SqlAlchemyAssetRepository
 from app.services.dify import DifyClient
 from app.services.files import FileService, ImageUploadService
 from app.services.messages import SqlAlchemyChatMessageRepository
-from app.services.sandbox import InMemoryPythonFigureSandboxService, PythonFigureSandboxService
+from app.services.sandbox import DockerPythonFigureSandboxService, PythonFigureSandboxService
 from app.services.sessions import SessionService, SqlAlchemyChatSessionRepository, SqlAlchemySessionService
 from app.services.storage import LocalAssetStorage
-
-_sandbox_service = InMemoryPythonFigureSandboxService()
-
 
 async def get_chat_service(
     db_session: AsyncSession = Depends(get_db_session),
@@ -50,8 +47,18 @@ async def get_file_service(
     )
 
 
-async def get_sandbox_service() -> PythonFigureSandboxService:
-    return _sandbox_service
+async def get_sandbox_service(
+    db_session: AsyncSession = Depends(get_db_session),
+) -> PythonFigureSandboxService:
+    settings = get_settings()
+    return DockerPythonFigureSandboxService(
+        settings=settings,
+        asset_repository=SqlAlchemyAssetRepository(db_session),
+        storage=LocalAssetStorage(
+            root_dir=Path(settings.asset_storage_path),
+            base_url=settings.asset_base_url,
+        ),
+    )
 
 
 async def get_session_service(

@@ -5,12 +5,19 @@
 import httpx
 import pytest
 
+from app.api.deps import get_sandbox_service
 from app.main import create_app
+from app.services.sandbox import InMemoryPythonFigureSandboxService
+
+
+async def fake_sandbox_service():
+    return InMemoryPythonFigureSandboxService()
 
 
 @pytest.mark.asyncio
 async def test_python_figure_sandbox_returns_generated_asset():
     app = create_app()
+    app.dependency_overrides[get_sandbox_service] = fake_sandbox_service
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -38,6 +45,7 @@ async def test_python_figure_sandbox_returns_generated_asset():
 @pytest.mark.asyncio
 async def test_python_figure_sandbox_rejects_dangerous_code():
     app = create_app()
+    app.dependency_overrides[get_sandbox_service] = fake_sandbox_service
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:

@@ -118,20 +118,20 @@
 - [x] 固化沙箱镜像构建：基于 `docker/sandbox/Dockerfile`，包含 matplotlib、numpy 和非 root 用户，并命名为 `studyhelper-code-sandbox:latest`。
 - [x] 实现 `POST /api/v1/sandbox/python-figure`，请求体包含代码、会话 ID、消息 ID 和可选图像规格。
 - [x] 在执行前做静态校验：限制代码长度，拒绝 `import os`、`subprocess`、`socket`、文件系统遍历等高风险能力。
-- [ ] 通过 Docker SDK 按需启动一次性沙箱容器，设置无网络、只读根文件系统、CPU/内存限制和 5 秒超时；资源限制以 Docker SDK 参数为准，不依赖 compose `deploy` 字段。（执行器代码已落地，真实 Docker live 验证待补）
-- [ ] 约定输出文件路径，只允许生成 PNG；执行完成后提取图片并写入 MinIO 或本地对象目录。
+- [x] 通过 Docker SDK 按需启动一次性沙箱容器，设置无网络、只读根文件系统、CPU/内存限制和 5 秒超时；资源限制以 Docker SDK 参数为准，不依赖 compose `deploy` 字段。
+- [x] 约定输出文件路径，只允许生成 PNG；执行完成后提取图片并写入 MinIO 或本地对象目录。（当前通过容器内 `/tmp/work/output.png` 生成、stdout base64 提取、本地对象目录保存）
 - [x] 返回 `asset_id`、URL、图片尺寸、执行耗时和 stderr 摘要。
-- [ ] 编写沙箱测试：安全绘图成功、语法错误、超时、危险 import、无输出文件、生成非 PNG。（当前覆盖安全绘图和危险 import）
+- [x] 编写沙箱测试：安全绘图成功、语法错误、超时、危险 import、无输出文件、生成非 PNG。
 - **交付物**：可被前端 Story 4.4 调用的绘图沙箱后端能力。
 - **工作量**：2 天
 
 ### Story 4.5: 建立核心答疑回归集：覆盖真实题图、直接解答、引导式解答、反馈分支和跨学科样例，作为 Sprint 验收固定检查
 
 - [x] 建立 `tests/questions/` 样例索引，至少纳入当前两张几何题图。
-- [ ] 增加后端回归测试入口，支持 mock Dify 和 live Dify 两种模式。（当前先落地 mock 回归入口，live Dify 待补）
+- [x] 增加后端回归测试入口，支持 mock Dify 和 live Dify 两种模式。
 - [x] 固化 Sprint 1 几何题关键断言：图片只进入「题目识别」，下游解题节点使用文本上下文；后端至少保存 `current_question/current_diagram/current_knowledge` 相关元数据。
 - [x] 为后续跨学科题图预留用例分类：数学、物理/化学、英语。
-- [ ] 将回归命令写入 Sprint 2 验收记录。（已写入后端启动说明，Sprint 2 review 待补）
+- [x] 将回归命令写入 Sprint 2 验收记录。
 - **交付物**：后续 Sprint 可复用的最小回归测试入口。
 - **工作量**：0.5 天
 
@@ -164,8 +164,8 @@
 | Story 2.3: 对接 Dify API，封装流式聊天接口 | 1.5 天 | ✅ 已完成 |
 | Story 2.4: 实现图片上传代理 | 1 天 | ✅ 已完成 |
 | Story 2.5: 对话管理 | 1 天 | ✅ 已完成 |
-| Story 2.6: 代码沙箱服务 | 2 天 | 🚧 部分完成 |
-| Story 4.5: 建立核心答疑回归集 | 0.5 天 | 🚧 部分完成 |
+| Story 2.6: 代码沙箱服务 | 2 天 | ✅ 已完成 |
+| Story 4.5: 建立核心答疑回归集 | 0.5 天 | ✅ 已完成 |
 | **合计** | **8 天** | |
 
 ## 预期产出

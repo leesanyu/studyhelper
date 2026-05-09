@@ -39,12 +39,12 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 
 | Story | 描述 | 优先级 | 状态 |
 |-------|------|--------|------|
-| 2.1 | 初始化 FastAPI 工程：项目结构、路由、配置管理、日志、异常处理 | P0 | 📋 |
-| 2.2 | 设计并创建 PostgreSQL 数据库表：users（可匿名占位）、chat_sessions、chat_messages、user_tags_history、assets | P0 | 📋 |
-| 2.3 | 对接 Dify API，封装流式聊天接口 `POST /api/v1/chat/completions`（SSE 返回），映射 Dify `conversation_id/message_id` | P0 | 📋 |
-| 2.4 | 实现图片上传代理：接收图片 → 校验/压缩 → 调用 Dify `/v1/files/upload` 获取 `file_id`，本地或 MinIO 存储仅用于预览、审计和历史追溯 | P0 | 📋 |
-| 2.5 | 对话管理：创建/续接会话、获取历史消息、会话列表、同步新题目/继续追问/直接解答状态 | P0 | 📋 |
-| 2.6 | 代码沙箱服务：Docker 容器隔离执行 `python:figure` 绘图代码，生成图片并返回 `asset_id` 或 URL（安全策略：禁止网络、只读文件系统、5 秒超时、资源限制） | P0 | 📋 |
+| 2.1 | 初始化 FastAPI 工程：项目结构、路由、配置管理、日志、异常处理 | P0 | ✅ |
+| 2.2 | 设计并创建 PostgreSQL 数据库表：users（可匿名占位）、chat_sessions、chat_messages、user_tags_history、assets | P0 | ✅ |
+| 2.3 | 对接 Dify API，封装流式聊天接口 `POST /api/v1/chat/completions`（SSE 返回），映射 Dify `conversation_id/message_id` | P0 | ✅ |
+| 2.4 | 实现图片上传代理：接收图片 → 校验/压缩 → 调用 Dify `/v1/files/upload` 获取 `file_id`，本地或 MinIO 存储仅用于预览、审计和历史追溯 | P0 | ✅ |
+| 2.5 | 对话管理：创建/续接会话、获取历史消息、会话列表、同步新题目/继续追问/直接解答状态 | P0 | ✅ |
+| 2.6 | 代码沙箱服务：Docker 容器隔离执行 `python:figure` 绘图代码，生成图片并返回 `asset_id` 或 URL（安全策略：禁止网络、只读文件系统、5 秒超时、资源限制） | P0 | ✅ |
 
 ---
 
@@ -74,7 +74,7 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 | 4.2 | Dify 工作流完善「总结 + 相似题」分支：收到「我会了」指令后总结要点并生成一道相似题 | P0 | 📋 |
 | 4.3 | 前端实现「不甚理解」/「我会了」悬浮反馈按钮，并通过后端透传反馈意图到 Dify 会话 | P0 | 📋 |
 | 4.4 | 几何题图形渲染：前端识别 `python:figure` 后调用后端沙箱执行，展示生成图片；依赖 Story 2.6 和 Story 3.7 | P0 | 📋 |
-| 4.5 | 建立核心答疑回归集：覆盖真实题图、直接解答、引导式解答、反馈分支和跨学科样例，作为 Sprint 验收固定检查 | P0 | 📋 |
+| 4.5 | 建立核心答疑回归集：覆盖真实题图、直接解答、引导式解答、反馈分支和跨学科样例，作为 Sprint 验收固定检查 | P0 | ✅ |
 
 ---
 

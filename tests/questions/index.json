@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "description": "StudyHelper core tutoring regression question set.",
+  "cases": [
+    {
+      "id": "geometry-angle-segment-1",
+      "file": "几何-角度-线段.jpg",
+      "subject": "数学",
+      "category": "几何",
+      "modes": ["direct_answer", "guided_answer"],
+      "context_contract": {
+        "image_only_to_node": "题目识别",
+        "downstream_input": "recognized_text_context"
+      },
+      "required_metadata": [
+        "current_question",
+        "current_diagram",
+        "current_knowledge"
+      ]
+    },
+    {
+      "id": "geometry-angle-segment-2",
+      "file": "几何-角度-线段-2.jpg",
+      "subject": "数学",
+      "category": "几何",
+      "modes": ["direct_answer", "guided_answer"],
+      "context_contract": {
+        "image_only_to_node": "题目识别",
+        "downstream_input": "recognized_text_context"
+      },
+      "required_metadata": [
+        "current_question",
+        "current_diagram",
+        "current_knowledge"
+      ]
+    }
+  ],
+  "reserved_categories": ["数学", "物理", "化学", "英语"]
+}

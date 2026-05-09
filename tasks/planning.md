@@ -28,7 +28,7 @@
 
 ### 3.1 核心答疑链路 (拍照 -> 解析 -> 反馈)
 1.  **用户**通过前端拍照/传图上传。
-2.  **FastAPI** 接收图片，转存至 OSS（对象存储），提取 URL 发送给 **Dify API**。
+2.  **FastAPI** 接收图片，完成校验/压缩，通过 **Dify** 文件上传接口获取 `file_id`，同时将图片保存到对象存储或本地静态目录用于预览、历史追溯和审计。
 3.  **Dify Workflow** 执行：
     *   *节点 A (多模态识别)：* 识别学科、提取题干文本。
     *   *节点 B (知识点提取)：* 输出该题目的二级知识点标签（如：初中数学-勾股定理）。
@@ -56,15 +56,14 @@
 *   [x] **任务 1.4（核心）**：在 Dify 中建立 Chatflow，跑通图片识别、知识点提取、多轮引导、直接解答和新题切换。
 *   [x] **边界确认**：Python 绘图执行不放在 Dify 内部，转入后端沙箱和前端展示链路。
 
-### Sprint 2: 业务后端与数据库搭建 (1周)
-*   [ ] **任务 2.1**：搭建 FastAPI 基础工程（路由、鉴权中间件、日志记录）。
-*   [ ] **任务 2.2**：设计 PostgreSQL 数据库表结构：
-    *   `users` (用户信息)
-    *   `chat_sessions` (对话会话)
-    *   `chat_messages` (聊天记录，存 Dify 的 Message ID)
-    *   `user_tags_history` (用户知识点打标记录，关联错题/薄弱点)
-*   [ ] **任务 2.3**：对接 Dify API，使用 FastAPI 包装一套对前端友好的流式接口 `/api/v1/chat/completions`。
-*   [ ] **任务 2.4**：实现**知识点打标逻辑**，在每次对话结束后，后端提取 Dify 识别的“知识点”，写入数据库更新用户的“薄弱点热力值”。
+### Sprint 2: 业务后端与数据库搭建（规划中，约 8 天）
+*   [ ] **Story 2.1**：初始化 FastAPI 工程，完成项目结构、路由、配置管理、日志、异常处理和健康检查。
+*   [ ] **Story 2.2**：设计并创建 PostgreSQL 数据库表：`users`（匿名占位）、`chat_sessions`、`chat_messages`、`user_tags_history`、`assets`，并通过 Alembic 管理迁移。
+*   [ ] **Story 2.3**：对接 Dify API，封装流式聊天接口 `/api/v1/chat/completions`，返回 SSE，并映射 Dify `conversation_id/message_id`。
+*   [ ] **Story 2.4**：实现图片上传代理，调用 Dify `/v1/files/upload` 获取 `file_id`，本地或 MinIO 存储仅用于预览、审计和历史追溯。
+*   [ ] **Story 2.5**：实现对话管理：创建/续接会话、获取历史消息、会话列表、同步新题目/继续追问/直接解答状态。
+*   [ ] **Story 2.6**：实现 Python 绘图代码沙箱，隔离执行 `python:figure`，生成图片并返回 `asset_id` 或 URL。
+*   [ ] **Story 4.5**：建立最小核心答疑回归集，覆盖真实题图、Dify 代理、上传、会话和沙箱关键路径。
 
 ### Sprint 3: 跨端前端搭建与重难点攻坚 (1.5周)
 *   [ ] **任务 3.1**：初始化 Uni-app / Taro 项目，搭建基础 UI 框架（首页、聊天对话页、历史记录页）。
@@ -91,4 +90,4 @@
 ---
 
 **下一步建议：**
-Sprint 1 已完成。后续应进入 **Sprint 2**，优先搭建 FastAPI 后端、Dify API 中转、图片/绘图产物存储，以及 Python 绘图沙箱执行链路。
+Sprint 1 已完成。后续应进入 **Sprint 2**，按 `tasks/sprints/sprint2/planning.md` 实施 FastAPI 后端、数据库、Dify API 中转、图片上传代理、会话管理、Python 绘图沙箱和最小回归集。

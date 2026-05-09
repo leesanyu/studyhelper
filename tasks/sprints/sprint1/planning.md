@@ -24,9 +24,11 @@ Sprint 1 已完成 AI 编排层的核心闭环：Dify 本地环境可用，模�
 
 Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `python:figure` 代码和传递绘图意图，真正执行 matplotlib、生成图片、存储并返回 URL 的能力转入后端沙箱（Epic 2.6）和前端展示（Epic 4.4）。
 
-## 任务分解
+## Story 分解与实施任务
 
-### 任务 1: 本地部署 Dify
+> 一级条目直接沿用 `product_backlog.md` 的 Story 编号与名称；Story 下方清单才是 Sprint 内部实施 Task。简单 Story 可以直接列清单，不必为了形式再拆 Task；执行中新增的技术修复归属到对应 Story，不另起产品 Story 编号。
+
+### Story 1.1: 本地 Docker 部署 Dify 开源版，验证管理后台可访问
 
 - [x] 确认本地 Docker 环境可用（Docker 24+、Docker Compose）
 - [x] 克隆 Dify 开源版仓库，使用 docker-compose 启动
@@ -34,7 +36,7 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
 - **交付物**：Dify 管理后台可正常访问和操作
 - **工作量**：0.5 天
 
-### 任务 2: 配置大模型凭证
+### Story 1.2: 在 Dify 中配置大模型凭证（至少一个多模态模型 + 一个文本推理模型）
 
 - [x] 注册/准备至少一个多模态模型 API Key（推荐：阿里百炼 Qwen-VL-Max 或 OpenAI GPT-4o）
 - [x] 注册/准备至少一个文本推理模型 API Key（推荐：DeepSeek 或 Qwen-Max）
@@ -43,19 +45,21 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
 - **交付物**：Dify 中至少 2 个模型可正常使用
 - **工作量**：0.5 天
 
-### 任务 3: 构建"题目识别"工作流节点
+### Story 1.3: 构建「题目识别」工作流节点：上传图片 → 输出题干文本、学科分类和图形关系 `diagram_description`
 
 - [x] 在 Dify 中创建新的 Chatflow
-- [x] 添加「LLM 节点 A」：接收图片输入，输出题干文本 + 学科分类
+- [x] 添加「题目识别」节点：接收图片输入，输出题干文本、学科分类和图形关系 `diagram_description`
 - [x] 编写 System Prompt，要求模型：
   - 准确识别题目中的文字和数学公式
+  - 描述题干和图片直接给出的点线角拓扑、垂直、共线、位置顺序
+  - 不在识别阶段输出角度代数关系、角和、互余、全等、相似等推导结论
   - 输出 LaTeX 格式的数学公式（块级用 `$$...$$`，行内用 `\(...\)`）
   - 判定学科分类（如：初中数学、高中物理）
 - [x] 用 2-3 张题目图片调试，验证识别准确度
-- **交付物**：节点 A 可正确识别题目图片并输出结构化文本
+- **交付物**：题目识别节点可正确识别题目图片并输出结构化文本与图形关系
 - **工作量**：1 天
 
-### 任务 4: 构建"知识点提取"工作流节点
+### Story 1.4: 构建"知识点提取"工作流节点：基于题干输出二级知识点标签（如：初中数学-勾股定理）
 
 - [x] 添加「LLM 节点 B」：基于节点 A 输出的题干，提取二级知识点标签
 - [x] 编写 System Prompt，要求模型：
@@ -65,7 +69,7 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
 - **交付物**：节点 B 可准确提取知识点标签
 - **工作量**：0.5 天
 
-### 任务 5: 构建"苏格拉底解答"工作流节点
+### Story 1.5: 构建"苏格拉底解答"工作流节点：严格不直接给答案，先给出解题思路和第一步引导
 
 - [x] 添加「LLM 节点 C」：基于题干和知识点，输出苏格拉底式引导解答
 - [x] 编写 System Prompt，核心约束：
@@ -82,9 +86,10 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
 - **交付物**：节点 C 以苏格拉底式风格引导解题，几何题可输出绘图代码
 - **工作量**：1.5 天
 
-### 任务 6: 串联完整 Chatflow 并规范输出格式
+### Story 1.6: 串联完整 Chatflow（识别 → 提取 → 解答），约束输出格式：Markdown + LaTeX + `current_question/current_diagram/current_knowledge` 结构化会话变量，并完成图片上传、多轮上下文、直接解答和新题目分支
 
 - [x] 串联节点 A → B → C，形成完整工作流
+- [x] 写入并复用会话变量：`current_question/current_diagram/current_knowledge`
 - [x] 约束最终输出格式：
   ```
   [苏格拉底式引导解答正文，Markdown + LaTeX]
@@ -100,38 +105,23 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
   ```
 - [x] 处理边界情况：纯文字题目（无图片）、多题合一图片、非学科图片
 - [x] 明确 Sprint 1 范围内结构化标签主要由知识点解析节点和会话变量承载，前端尾部 JSON 的稳定渲染/解析归入后续前端联调
-- **交付物**：完整 Chatflow 可端到端运行，输出格式规范
-- **工作量**：0.5 天
+- [x] 支撑项：修复数学公式渲染
+  - 修改 `.env`：`NEXT_PUBLIC_ENABLE_SINGLE_DOLLAR_LATEX=false` → `true`
+  - 在 `docker-compose.yaml` web 服务中添加 `NEXT_PUBLIC_ENABLE_SINGLE_DOLLAR_LATEX` 环境变量传递
+  - 重新创建 API + web 容器使环境变量生效
+  - 更新所有 Prompt 文档：行内公式用 `$...$`，独立公式块用 `$$...$$`（原为统一 `$$...$$`）
+  - 通过 Dify Console API 更新 Chatflow 中 4 个 LLM 节点的 Prompt
+  - 发布新版本 Chatflow
+  - 验证：前端 HTML body 已注入 `data-enable-single-dollar-latex="true"`，AI 回复使用行内 `$...$` 格式
+  - 根因：Dify 默认只支持块级 `$$...$$` 渲染，行内 `$...$` 需要启用 feature flag；原 Prompt 统一使用 `$$` 导致行内公式显示为原始文本
 
-### 任务 6.2: 启用图片上传能力
-
-- [x] 开启 features.file_upload（`enabled = true`, `image.enabled = true`）
-- [x] 题目识别节点开启 vision（`vision.enabled = true`, `variable_selector` 指向 `sys.files`）
-- [x] 通过 Service API (`/v1/chat-messages` + `files` 参数) 验证图片上传识别
-- [x] 验证结果：上传包含 `x² - 5x + 6 = 0` 的图片 → 模型正确识别为"初中数学-解一元二次方程"
-- **交付物**：图片上传识别功能正常工作
-- **工作量**：0.5 天
-
-### 任务 6.3: 修复数学公式渲染
-
-- [x] 修改 `.env`：`NEXT_PUBLIC_ENABLE_SINGLE_DOLLAR_LATEX=false` → `true`
-- [x] 在 `docker-compose.yaml` web 服务中添加 `NEXT_PUBLIC_ENABLE_SINGLE_DOLLAR_LATEX` 环境变量传递
-- [x] 重新创建 API + web 容器使环境变量生效
-- [x] 更新所有 Prompt 文档：行内公式用 `$...$`，独立公式块用 `$$...$$`（原为统一 `$$...$$`）
-- [x] 通过 Dify Console API 更新 Chatflow 中 4 个 LLM 节点的 Prompt
-- [x] 发布新版本 Chatflow
-- [x] 验证：前端 HTML body 已注入 `data-enable-single-dollar-latex="true"`，AI 回复使用行内 `$...$` 格式
-- **根因**：Dify 默认只支持块级 `$$...$$` 渲染，行内 `$...$` 需要启用 feature flag；原 Prompt 统一使用 `$$` 导致行内公式显示为原始文本
-- **交付物**：行内和块级数学公式均可在 Dify UI 中正确渲染
-- **工作量**：0.5 天
-
-### 任务 6.1: 实现多轮对话分支（上下文状态 + Question Classifier + Memory）
+#### Task 1.6.1: 实现多轮对话分支（IF/ELSE + Memory + Question Classifier）
 
 - [x] 添加会话变量：
   - `context_ready`（string, 默认 `"false"`）：标记当前会话是否已有可复用题目上下文
   - `topic_resolved`（string, 默认 `"false"`）：记录是否已给出直接答案
   - `dialogue_started`（string, 默认 `"false"`）：兼容旧流程状态
-  - `current_question/current_knowledge/raw_question_info/raw_knowledge_info`：保存题目与知识点上下文
+  - `current_question/current_diagram/current_knowledge/raw_question_info/raw_knowledge_info`：保存题目、图形关系与知识点上下文
 - [x] 在 Start 节点后添加 IF/ELSE 节点，条件：
   - `conversation.context_ready != "true"`：构建题目上下文
   - 否则：进入多轮意图分类
@@ -164,10 +154,17 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
 - [x] 发布纯文本 Qwen 解题版本：引导式解答和直接解答节点切换为 `qwen3.6-plus`，Vision 关闭，只消费 `current_question/current_diagram/current_knowledge`
 - [x] 发布直接解答禁草稿版本：`direct_answer` temperature=0.1，禁止草稿式推理和草稿短语，端到端验证几何题最终关系为 $\angle DBE=90^\circ+\frac12\angle C$
 - [x] 发布识别解析容错版本：`code_parse_question` 修复 LaTeX 反斜杠导致的 JSON 解析失败，验证 `has_figure=true` 且 `diagram_description` 非空
-- **交付物**：多轮苏格拉底式引导对话 + 直接解答上下文复用 + 新题目上下文重建
-- **工作量**：1 天
 
-### 任务 7: 真实题目验证
+#### Task 1.6.2: 启用图片上传能力
+
+- [x] 开启 features.file_upload（`enabled = true`, `image.enabled = true`）
+- [x] 题目识别节点开启 vision（`vision.enabled = true`, `variable_selector` 指向 `sys.files`）
+- [x] 通过 Service API (`/v1/chat-messages` + `files` 参数) 验证图片上传识别
+- [x] 验证结果：上传包含 `x² - 5x + 6 = 0` 的图片 → 模型正确识别为"初中数学-解一元二次方程"
+- **交付物**：完整 Chatflow 可端到端运行，支持图片上传识别、多轮苏格拉底式引导、直接解答上下文复用和新题目上下文重建
+- **工作量**：2.5 天
+
+### Story 1.7: 在 Dify 调试面板中用真实题目图片验证全链路输出质量
 
 - [x] 使用现有真实题图 `tests/questions/几何-角度-线段.jpg` 做关键路径端到端验证
 - [x] 验证题图只进入「题目识别」节点：识别节点 prompt `file_count=2`，直接解答节点 prompt `file_count=0`
@@ -190,18 +187,15 @@ Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `pyt
 
 ## 时间估算
 
-| 任务 | 工作量 | 状态 |
+| Story | 工作量 | 状态 |
 |------|--------|------|
-| 任务 1: 部署 Dify | 0.5 天 | ✅ 已完成 |
-| 任务 2: 配置模型 | 0.5 天 | ✅ 已完成 |
-| 任务 3: 题目识别节点 | 1 天 | ✅ 已完成 |
-| 任务 4: 知识点提取节点 | 0.5 天 | ✅ 已完成 |
-| 任务 5: 苏格拉底解答节点 | 1.5 天 | ✅ 已完成 |
-| 任务 6: 串联 Chatflow | 0.5 天 | ✅ 已完成 |
-| 任务 6.1: 多轮对话分支 | 1 天 | ✅ 已完成 |
-| 任务 6.2: 图片上传能力 | 0.5 天 | ✅ 已完成 |
-| 任务 6.3: 数学公式渲染 | 0.5 天 | ✅ 已完成 |
-| 任务 7: 真实题目验证 | 0.5 天 | ✅ 已关闭 |
+| Story 1.1: 本地 Docker 部署 Dify 开源版，验证管理后台可访问 | 0.5 天 | ✅ 已完成 |
+| Story 1.2: 在 Dify 中配置大模型凭证（至少一个多模态模型 + 一个文本推理模型） | 0.5 天 | ✅ 已完成 |
+| Story 1.3: 构建「题目识别」工作流节点：上传图片 → 输出题干文本、学科分类和图形关系 `diagram_description` | 1 天 | ✅ 已完成 |
+| Story 1.4: 构建"知识点提取"工作流节点：基于题干输出二级知识点标签（如：初中数学-勾股定理） | 0.5 天 | ✅ 已完成 |
+| Story 1.5: 构建"苏格拉底解答"工作流节点：严格不直接给答案，先给出解题思路和第一步引导 | 1.5 天 | ✅ 已完成 |
+| Story 1.6: 串联完整 Chatflow（识别 → 提取 → 解答），约束输出格式：Markdown + LaTeX + `current_question/current_diagram/current_knowledge` 结构化会话变量，并完成图片上传、多轮上下文、直接解答和新题目分支 | 2.5 天 | ✅ 已完成 |
+| Story 1.7: 在 Dify 调试面板中用真实题目图片验证全链路输出质量 | 0.5 天 | ✅ 已关闭 |
 | **合计** | **7 天** | |
 
 ## 预期产出

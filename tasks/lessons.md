@@ -1,5 +1,21 @@
 # 经验教训汇总
 
+## Scrum 文档管理
+
+### 1. Scrum 文档必须保持 Epic / Story / Task 三层边界
+
+**问题**：`tasks/sprints/sprint1/planning.md` 曾用「任务 1、任务 2、任务 6.3」重新命名 Sprint 一级条目；`tasks/product_backlog.md` 也曾把 1.6.1、1.6.2 写成 Story，导致 Product Backlog 和 Sprint Planning 混入两套层级。
+
+**根因**：Planning 阶段把产品 Story 和 Sprint 内部实施 Task 混成了同一级结构，执行中新增的技术修复也被写成了新的产品 Story 编号。
+
+**规则**：
+1. Product Backlog 只维护 Epic / Story，不在 Story 下继续新增子 Story
+2. Sprint Planning 的一级条目必须直接沿用 `product_backlog.md` 的 Story 编号与名称
+3. Story 下方再拆 Sprint 内部 Task；Task 可以写成 `Task 1.6.1`，但不能出现在 Product Backlog 的 Story 表中
+4. 简单 Story 可以不拆 Task，直接列验收和实施清单
+5. 执行中新增的技术修复应归属到对应 Story 的支撑项，不新增伪 Story 编号
+6. 时间估算表按 Story 汇总，避免 Product Backlog、Planning、Review 三份文档无法互相追踪
+
 ## Dify 部署与配置
 
 ### 1. Dify 环境变量需同时配置 .env 和 docker-compose.yaml

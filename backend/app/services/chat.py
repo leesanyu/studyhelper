@@ -55,6 +55,7 @@ class DifyChatService:
         try:
             files = await self._build_dify_files(request.asset_ids)
             conversation_id = await self._get_conversation_id(request.session_id)
+            await self._update_question_context(request)
         except StudyHelperError as exc:
             yield {"event": "error", "data": {"code": exc.code, "message": exc.message}}
             return
@@ -111,6 +112,17 @@ class DifyChatService:
             raise StudyHelperError(f"Session not found: {session_id}", 404, "session_not_found")
         return session.get("dify_conversation_id")
 
+    async def _update_question_context(self, request: ChatCompletionRequest) -> None:
+        if not request.session_id or self._session_repository is None:
+            return
+        await self._session_repository.update_context(
+            request.session_id,
+            mode=request.mode,
+            current_question=request.current_question,
+            current_diagram=request.current_diagram,
+            current_knowledge=request.current_knowledge,
+        )
+
     async def _persist_user_message(self, request: ChatCompletionRequest) -> None:
         if not request.session_id or self._message_repository is None:
             return
@@ -141,6 +153,7 @@ class DifyChatService:
                 content=content,
                 mode=request.mode,
                 dify_message_id=message_end_data.get("dify_message_id"),
+                knowledge_points=list(message_end_data.get("knowledge_points") or []),
                 raw_metadata=message_end_data,
             )
         )

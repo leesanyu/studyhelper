@@ -29,10 +29,25 @@ class FakeDifyChatClient:
         yield {"event": "message_end", "data": {"dify_message_id": "dify-msg-1"}}
 
 
+class FakeDifyChatClientWithKnowledge:
+    async def stream_chat(self, query, user, conversation_id, files=None, inputs=None):
+        yield {"event": "message_start", "data": {"conversation_id": "conv-1"}}
+        yield {"event": "delta", "data": {"text": "解题步骤"}}
+        yield {
+            "event": "message_end",
+            "data": {
+                "dify_message_id": "dify-msg-1",
+                "subject": "数学",
+                "knowledge_points": ["角平分线"],
+            },
+        }
+
+
 class FakeChatSessionRepository:
     def __init__(self, sessions: dict[str, dict]) -> None:
         self.sessions = sessions
         self.updated_conversations: list[tuple[str, str]] = []
+        self.context_updates: list[dict] = []
 
     async def get_session(self, session_id: str) -> dict | None:
         return self.sessions.get(session_id)
@@ -40,6 +55,25 @@ class FakeChatSessionRepository:
     async def update_dify_conversation_id(self, session_id: str, conversation_id: str) -> None:
         self.updated_conversations.append((session_id, conversation_id))
         self.sessions[session_id]["dify_conversation_id"] = conversation_id
+
+    async def update_context(
+        self,
+        session_id: str,
+        *,
+        mode: str,
+        current_question: str | None = None,
+        current_diagram: str | None = None,
+        current_knowledge: dict | None = None,
+    ) -> None:
+        self.context_updates.append(
+            {
+                "session_id": session_id,
+                "mode": mode,
+                "current_question": current_question,
+                "current_diagram": current_diagram,
+                "current_knowledge": current_knowledge,
+            }
+        )
 
 
 @pytest.mark.asyncio
@@ -168,6 +202,38 @@ async def test_dify_chat_service_persists_user_and_assistant_messages():
 
 
 @pytest.mark.asyncio
+async def test_dify_chat_service_persists_assistant_knowledge_points():
+    message_repository = InMemoryChatMessageRepository()
+    service = DifyChatService(
+        dify_client=FakeDifyChatClientWithKnowledge(),
+        asset_repository=InMemoryAssetRepository(),
+        session_repository=FakeChatSessionRepository(
+            {"session-1": {"session_id": "session-1", "dify_conversation_id": None}}
+        ),
+        message_repository=message_repository,
+    )
+
+    _events = [
+        event
+        async for event in service.stream_chat(
+            ChatCompletionRequest(session_id="session-1", message="请解答", client_user_id="anon-1")
+        )
+    ]
+
+    assistant_message = message_repository.messages[1]
+    assert assistant_message["knowledge_points"] == ["角平分线"]
+    assert assistant_message["raw_metadata"]["subject"] == "数学"
+    assert message_repository.tags == [
+        {
+            "session_id": "session-1",
+            "subject": "数学",
+            "knowledge_point": "角平分线",
+            "source": "dify",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_dify_chat_service_updates_session_conversation_id_from_stream():
     session_repository = FakeChatSessionRepository(
         {"session-1": {"session_id": "session-1", "dify_conversation_id": None}}
@@ -187,6 +253,43 @@ async def test_dify_chat_service_updates_session_conversation_id_from_stream():
 
     assert [event["event"] for event in events] == ["message_start", "delta", "message_end"]
     assert session_repository.updated_conversations == [("session-1", "conv-1")]
+
+
+@pytest.mark.asyncio
+async def test_dify_chat_service_updates_question_context_for_new_question():
+    session_repository = FakeChatSessionRepository(
+        {"session-1": {"session_id": "session-1", "dify_conversation_id": None}}
+    )
+    service = DifyChatService(
+        dify_client=FakeDifyChatClient(),
+        asset_repository=InMemoryAssetRepository(),
+        session_repository=session_repository,
+    )
+
+    _events = [
+        event
+        async for event in service.stream_chat(
+            ChatCompletionRequest(
+                session_id="session-1",
+                message="新题",
+                mode="new_question",
+                client_user_id="anon-1",
+                current_question="求角 A",
+                current_diagram="AB 与 CD 相交",
+                current_knowledge={"points": ["对顶角"]},
+            )
+        )
+    ]
+
+    assert session_repository.context_updates == [
+        {
+            "session_id": "session-1",
+            "mode": "new_question",
+            "current_question": "求角 A",
+            "current_diagram": "AB 与 CD 相交",
+            "current_knowledge": {"points": ["对顶角"]},
+        }
+    ]
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,8 @@ class SessionSummary(BaseModel):
     title: str | None
     status: str
     last_message: str | None = None
+    subject: str | None = None
+    knowledge_points: list[str] = Field(default_factory=list)
 
 
 class SessionListResponse(BaseModel):

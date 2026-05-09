@@ -15,11 +15,10 @@ from app.services.dify import DifyClient
 from app.services.files import FileService, ImageUploadService
 from app.services.messages import SqlAlchemyChatMessageRepository
 from app.services.sandbox import InMemoryPythonFigureSandboxService, PythonFigureSandboxService
-from app.services.sessions import InMemorySessionService, SessionService, SqlAlchemyChatSessionRepository
+from app.services.sessions import SessionService, SqlAlchemyChatSessionRepository, SqlAlchemySessionService
 from app.services.storage import LocalAssetStorage
 
 _sandbox_service = InMemoryPythonFigureSandboxService()
-_session_service = InMemorySessionService()
 
 
 async def get_chat_service(
@@ -55,5 +54,7 @@ async def get_sandbox_service() -> PythonFigureSandboxService:
     return _sandbox_service
 
 
-async def get_session_service() -> SessionService:
-    return _session_service
+async def get_session_service(
+    db_session: AsyncSession = Depends(get_db_session),
+) -> SessionService:
+    return SqlAlchemySessionService(db_session)

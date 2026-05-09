@@ -1,13 +1,13 @@
 # 节点 C：苏格拉底解答
 
 > 位置：Dify Chatflow → LLM 节点（引导式解答 + 直接解答）
-> 输入（首轮）：`conversation.current_question` + `conversation.current_knowledge` + 用户上传题图（`sys.files`，如有）
-> 输入（继续引导）：`conversation.current_question/current_knowledge` + 对话历史（Memory）+ 用户最新回复 + 用户上传题图（`sys.files`，如有）
-> 输入（直接给答案）：`conversation.current_question/current_knowledge` + 用户请求（`sys.query`）+ 用户上传题图（`sys.files`，如有）
+> 输入（首轮）：`conversation.current_question/current_diagram/current_knowledge`
+> 输入（继续引导）：`conversation.current_question/current_diagram/current_knowledge` + 对话历史（Memory）+ 用户最新回复
+> 输入（直接给答案）：`conversation.current_question/current_diagram/current_knowledge` + 用户请求（`sys.query`）
 > 输出：苏格拉底式引导解答（不直接给答案）/ 直接完整解答 + 几何图形 Python 代码（如需要）
 > 设计模式：CoT + Reflection + Tool Use（几何绘图）
 > 几何图形执行路径：节点 C 输出 Python 代码 → FastAPI 独立沙箱执行 → 生成图片 URL → 返回前端
-> 模型：解题节点统一使用 `qwen3.6-plus`，因为该模型在当前 Dify/Tongyi 插件 schema 中支持图片输入；`glm-5.1` 会导致图片在 LLM prompt 组装阶段被过滤。
+> 模型：解题节点统一使用 `qwen3.6-plus` 纯文本模式，Vision 关闭；题图只进入“题目识别”节点，由 `current_diagram` 向下游传递图形拓扑。
 
 ## 多轮对话机制
 
@@ -27,7 +27,7 @@
 Start → IF/ELSE (conversation.context_ready ≠ "true")
   ├─ IF true (缺少题目上下文):
   │    题目识别 → 解析题目 → 知识点提取 → 解析知识点
-  │    → VariableAssigner(写入current_question/current_knowledge, 设置context_ready=true)
+  │    → VariableAssigner(写入current_question/current_diagram/current_knowledge, 设置context_ready=true)
   │    → 解答方式分类
   │       ├─ "引导式解答" → 引导式解答（首轮，无 Memory）
   │       └─ "直接给答案" → 直接解答（无 Memory）→ VariableAssigner(设置topic_resolved="true")
@@ -36,7 +36,7 @@ Start → IF/ELSE (conversation.context_ready ≠ "true")
        Question Classifier (意图分类, temperature=0.3)
          ├─ "继续引导" → 引导式解答（继续）(显式题目上下文 + Memory)
          ├─ "直接给答案" → 直接解答（无 Memory）→ VariableAssigner(设置topic_resolved="true")
-         └─ "新题目" → 题目识别 → 解析题目 → 知识点提取 → 解析知识点 → VariableAssigner(覆盖上下文) → 解答方式分类
+         └─ "新题目" → 题目识别 → 解析题目 → 知识点提取 → 解析知识点 → VariableAssigner(覆盖上下文，含 current_diagram) → 解答方式分类
 
 引导式解答（首轮）/ 引导式解答（继续）/ 直接解答 → VariableAggregator → Answer
 ```
@@ -61,10 +61,10 @@ Start → IF/ELSE (conversation.context_ready ≠ "true")
 
 ### Memory 配置
 
-- 引导式解答（首轮）和直接解答不配置 Memory，只使用干净的 `current_question/current_knowledge`
+- 引导式解答（首轮）和直接解答不配置 Memory，只使用干净的 `current_question/current_diagram/current_knowledge`
 - 引导式解答（继续）开启 Memory（`window.enabled = true`, `size = 10`）
 - 继续节点的 prompt_template 不手动写 `{{#sys.query#}}`，避免和 Memory query 追加重复
-- 引导式解答（首轮）、引导式解答（继续）和直接解答均开启 Vision，`variable_selector = ["1778214671822", "sys.files"]`，并使用 `qwen3.6-plus`，确保图形题不会在解题节点退化为纯文本题。
+- 引导式解答（首轮）、引导式解答（继续）和直接解答均关闭 Vision；图片只在“题目识别”节点使用，解题节点通过 `current_diagram` 获取图形拓扑。
 
 ### 会话变量
 
@@ -74,6 +74,7 @@ Start → IF/ELSE (conversation.context_ready ≠ "true")
 | `topic_resolved` | string | `"false"` | 标记当前话题是否已结束（给了直接答案） |
 | `dialogue_started` | string | `"false"` | 标记是否已开始过对话（首轮后设为 true） |
 | `current_question` | string | `""` | 当前题目的干净文本 |
+| `current_diagram` | string | `""` | 当前题目的图形拓扑文本，由题目识别节点输出并经解析节点净化 |
 | `current_knowledge` | string | `""` | 当前题目的格式化知识点信息 |
 
 > 注：原计划使用 `sys.dialogue_count` 判断首轮，但 draft run 时该值始终为 1，改为会话变量 `dialogue_started` 控制。

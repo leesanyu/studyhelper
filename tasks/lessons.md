@@ -126,5 +126,39 @@
 
 **规则**：
 1. 验证图片上下文时必须同时检查节点 `inputs.#files#` 和 `process_data.prompts[*].files`
-2. 图形题解题节点应使用当前 Dify 插件中确认为 vision-capable 的模型，例如 `qwen3.6-plus`
+2. 如果某个节点设计上需要直接看图，应使用当前 Dify 插件中确认为 vision-capable 的模型；当前 Sprint1 解题节点已改为纯文本，不再直接看图
 3. 不要把"节点 Vision 开启"等同于"模型实际看到了图片"
+
+### 13. 题图只进识别节点，解题节点消费图形文本
+
+**问题**：为修复几何题错误，曾把题图继续传给直接解答/引导式解答节点，但这会让流程职责不清，也无法保证多轮追问时上下文一致。
+
+**根因**：`题目识别` 节点已经具备 Vision 能力，正确架构应由它把图片转成稳定的 `question_text + diagram_description`；下游解题节点只消费会话变量中的文本上下文。
+
+**规则**：
+1. 图片只进入 `题目识别` 节点；`直接解答`、`引导式解答（首轮）`、`引导式解答（继续）` 的 Vision 保持关闭
+2. `题目识别` 必须输出 `diagram_description`，`code_parse_question` 必须解析并写入 `conversation.current_diagram`
+3. 验证解题节点上下文时，必须确认 `process_data.prompts[*].files=[]` 且 user prompt 中包含 `## 图形关系`
+
+### 14. 题目识别不能把图形推导写入上下文
+
+**问题**：识别节点曾在 `diagram_description` 中写入“角和、互余、互补”等推导性关系，直接解答节点把这些内容当作已知，导致几何题证明混乱甚至判断图文冲突。
+
+**根因**：识别节点和解题节点职责混用。识别节点应描述直接可见的点线角、垂直、共线、位置顺序，不应替下游完成证明。
+
+**规则**：
+1. `diagram_description` 只描述题干和图片直接给出的拓扑/标记
+2. 禁止输出“因此、所以、故、可得、推出、说明、表明”等推导结论
+3. 禁止输出角度代数关系、角和、互余、互补、全等、相似等结论，除非题干文字直接给出或图上明确标注
+4. 解析节点应兜底过滤残留推导性语句，避免污染 `current_diagram`
+
+### 15. 题目识别 JSON 要容错 LaTeX 反斜杠
+
+**问题**：识别节点有时会输出形似 JSON 的文本，但 LaTeX 中的 `\angle`、`\circ` 没有按 JSON 字符串规则转义，导致 `json.loads` 失败，解析节点回退为原始文本，`current_diagram` 变空。
+
+**根因**：LLM 的“严格 JSON”并不稳定，数学题 OCR/识别输出里高频出现反斜杠，必须在解析层做有限容错。
+
+**规则**：
+1. `code_parse_question` 先按标准 JSON 解析，失败后只修复非法 JSON 反斜杠转义，再重试
+2. 容错逻辑不能吞掉解析失败；如果最终失败，必须让 `has_figure=false` 和 `diagram_description=""` 的回退行为可观测
+3. 端到端验证必须检查 `code_parse_question.has_figure=true` 且 `diagram_description` 非空，不能只看最终答案是否碰巧正确

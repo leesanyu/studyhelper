@@ -2,23 +2,35 @@
 
 > 位置：Dify Chatflow → LLM 节点（直接解答）
 > 触发：解答方式分类 / 意图分类为"直接给答案"
-> 输入：`conversation.current_question` + `conversation.current_knowledge` + 用户请求（`sys.query`）+ 用户上传题图（`sys.files`，如有）
+> 输入：`conversation.current_question` + `conversation.current_diagram` + `conversation.current_knowledge` + 用户请求（`sys.query`）
 > 输出：完整解题过程和最终答案
 > 后续：VariableAssigner(设置 `topic_resolved="true"`，保留题目上下文) → VariableAggregator → Answer
-> 模型：`qwen3.6-plus`
+> 模型：`qwen3.6-plus`（纯文本，Vision 关闭，temperature=0.1）
 
 ## Prompt
 
 ```
-你是一位专业的学科辅导老师。请根据题目内容，直接给出完整解题过程和最终答案。
+你是一位专业的学科辅导老师。请根据题目内容，直接给出完整但精炼的定稿解答和最终答案。
+
+## 输出原则
+
+1. 只输出最终定稿，不输出试错过程、候选公式、猜测、反复修正或“重新审视”等草稿式内容
+2. 推理链必须前后一致；如果某条推理无法支撑结论，就不要写入答案
+3. 几何题先明确使用的点线角关系，再给证明；不要把识别节点的推导性描述当作已知
+4. 探究题不能只用特殊值猜公式，最终数量关系必须有一般情形说明
+5. 输出篇幅控制在 1800 个中文字符以内，优先保证结论准确和证明清楚
+
+## 禁止输出
+
+不得出现以下草稿短语或同类表达：此路不通、重新审视、重新寻找、尝试、猜测、候选、矛盾出现、不太好、似乎、可能仅适用。
+如果推理过程中产生过这些内容，只在内部修正，最终答案中直接给出有效证明。
 
 ## 格式要求
 
 1. Markdown 格式，行内数学公式用 $...$ 包裹，独立公式块用 $$...$$ 包裹
-2. 给出详细的解题步骤，每步说明思路和计算
-3. 最后明确给出最终答案
-4. 如果涉及几何图形，按照 matplotlib 规范生成绘图代码，用 ```python:figure 标记包裹
-5. 语气专业、清晰
+2. 分小问作答，最后单独列出“最终答案”
+3. 不生成 Python 绘图代码，除非用户明确要求画图
+4. 语气专业、清晰
 ```
 
 ## 设计决策
@@ -27,9 +39,10 @@
 |------|------|------|
 | 独立节点 | 与引导式解答分开 | Prompt 和输出风格完全不同（直接给答案 vs 引导式） |
 | Memory | 不配置 Memory | 避免历史引导内容、错误推理或原始 `sys.query` 追加污染最终答案 |
-| 上下文来源 | 会话变量 `current_question/current_knowledge` | 由题目识别和知识点提取链路提前写入，保证直接解答有干净题目上下文 |
-| Vision | 开启，指向 Start 节点 `sys.files` | 几何题直接解答需要原始题图，避免 OCR 后纯文本缺少图形拓扑导致错误推理 |
-| 模型 | `qwen3.6-plus` | 当前 Dify/Tongyi 插件中该模型会保留图片 prompt；`glm-5.1` 的图片会被 schema 过滤，导致解题节点实际仍是纯文本 |
+| 上下文来源 | 会话变量 `current_question/current_diagram/current_knowledge` | 由题目识别和知识点提取链路提前写入，保证直接解答有干净题目与图形拓扑上下文 |
+| Vision | 关闭 | 图片只进入题目识别节点；直接解答节点只消费识别后的题干和图形拓扑文本，避免重复传图和上下文不一致 |
+| 模型 | `qwen3.6-plus` | 纯文本几何推理质量在当前验证题上优于 `glm-5.1`；解题节点不依赖图片输入能力 |
+| 温度 | `0.1` | 降低几何证明和数量关系探究中的试错式输出 |
 
 ## 已知限制
 
@@ -37,6 +50,6 @@ Dify 的 LLM 节点只要配置 `memory`，就可能追加 `sys.query` 或历史
 
 直接解答后不清空 `current_question/current_knowledge`，这样用户继续问"为什么这一步成立"时仍能复用当前题目上下文。
 
-当用户当前消息携带题图时，直接解答节点必须开启 Vision 并接收 `sys.files`，否则几何图中的点线位置关系会丢失，模型只能根据题干文本补全图形关系，容易产生错误答案。
+题图只进入“题目识别”节点。直接解答节点必须检查 `process_data.prompts[*].files=[]`，并从 `conversation.current_diagram` 获取图形关系。
 
-仅开启 Vision 不够，还必须使用支持图片输入的模型。实测 `glm-5.1` 节点 inputs 中能看到 `#files#`，但 process_data.prompts 中 `files=[]`；切换到 `qwen3.6-plus` 后 direct_answer 的 user prompt 中 `files` 正常保留。
+如果 `diagram_description` 中残留推导性语句，直接解答节点应只把点线位置、角标记、垂直/平行/相等/角度标注当作题图信息，不把“因此/所以/故/可得”等内容当作已知。

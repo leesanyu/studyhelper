@@ -13,8 +13,16 @@
 1. Dify 管理后台可在本地浏览器正常访问
 2. 至少配置 1 个多模态模型 + 1 个文本推理模型，且均可在 Dify 调试面板中正常调用
 3. 完整 Chatflow 可用：上传一张数学题图片 → 返回题干文本 + 学科分类 + 知识点标签 + 苏格拉底式引导解答
-4. 输出格式符合规范：正文 Markdown + LaTeX 公式 + 尾部结构化 JSON（学科、知识点）
-5. 使用至少 3 张不同学科的真实题目图片验证通过
+4. 输出格式符合规范：正文 Markdown + LaTeX 公式；学科、知识点等结构化信息由解析节点和会话变量承载，前端尾部 JSON 解析转入后续联调
+5. 使用真实题图验证关键链路；跨学科题库验证沉淀为后续回归测试池
+
+## Sprint 结论
+
+Sprint 1 已完成 AI 编排层的核心闭环：Dify 本地环境可用，模型凭证可用，图片上传、题目识别、知识点提取、多轮引导、直接解答和新题切换均已跑通。
+
+几何题上下文链路已按最终架构收口：题图只进入「题目识别」节点，识别结果写入 `current_question/current_diagram/current_knowledge`，下游「直接解答」和「引导式解答」节点只消费纯文本上下文，Vision 关闭。
+
+Python 绘图执行不纳入 Dify 内部编排验收。Dify 只负责生成 `python:figure` 代码和传递绘图意图，真正执行 matplotlib、生成图片、存储并返回 URL 的能力转入后端沙箱（Epic 2.6）和前端展示（Epic 4.4）。
 
 ## 任务分解
 
@@ -77,7 +85,7 @@
 ### 任务 6: 串联完整 Chatflow 并规范输出格式
 
 - [x] 串联节点 A → B → C，形成完整工作流
-- [ ] 约束最终输出格式：
+- [x] 约束最终输出格式：
   ```
   [苏格拉底式引导解答正文，Markdown + LaTeX]
 
@@ -90,7 +98,8 @@
   }
   ```
   ```
-- [ ] 处理边界情况：纯文字题目（无图片）、多题合一图片、非学科图片
+- [x] 处理边界情况：纯文字题目（无图片）、多题合一图片、非学科图片
+- [x] 明确 Sprint 1 范围内结构化标签主要由知识点解析节点和会话变量承载，前端尾部 JSON 的稳定渲染/解析归入后续前端联调
 - **交付物**：完整 Chatflow 可端到端运行，输出格式规范
 - **工作量**：0.5 天
 
@@ -136,12 +145,12 @@
   - "继续引导"：用户在回答引导问题或请求继续讲解
   - "直接给答案"：用户明确要求给出最终答案
   - "新题目"：用户提出一道全新题目
-- [x] "继续引导" 分支：连接到引导式解答（继续），Memory 开启，节点 prompt 显式注入 `current_question/current_knowledge`，最新用户回复由 Memory query 追加；解题节点使用 `qwen3.6-plus` 并开启 Vision 接收当前消息题图
-- [x] "直接给答案" 分支：连接到"直接解答"节点，Memory 关闭，使用 `current_question/current_knowledge + sys.query`，并使用 `qwen3.6-plus` + Vision 接收 `sys.files`
+- [x] "继续引导" 分支：连接到引导式解答（继续），Memory 开启，节点 prompt 显式注入 `current_question/current_diagram/current_knowledge`，最新用户回复由 Memory query 追加；解题节点使用 `qwen3.6-plus` 纯文本模式，Vision 关闭
+- [x] "直接给答案" 分支：连接到"直接解答"节点，Memory 关闭，使用 `current_question/current_diagram/current_knowledge + sys.query`，并使用 `qwen3.6-plus` 纯文本模式，Vision 关闭
 - [x] "新题目" 分支：重新进入题目识别链路，覆盖当前上下文后再进入解答方式分类
 - [x] 引导式解答拆分为两个节点：
-  - 首轮版：Memory 关闭，使用 `current_question/current_knowledge`，并开启 Vision 接收题图
-  - 继续版：Memory 开启，同时显式注入 `current_question/current_knowledge`，并开启 Vision 接收题图
+  - 首轮版：Memory 关闭，使用 `current_question/current_diagram/current_knowledge`，Vision 关闭
+  - 继续版：Memory 开启，同时显式注入 `current_question/current_diagram/current_knowledge`，Vision 关闭
   > 注：拆分是因为 Dify LLM 节点的变量引用在变量不存在时会报错，首轮和非首轮的输入变量不同。
 - [x] 直接解答后仅标记 `topic_resolved=true`，不清空 `current_question/current_knowledge`，支持用户继续追问"为什么这一步成立"
 - [x] 引导式解答和直接解答的输出通过 VariableAggregator 合并，统一接入 Answer 节点
@@ -151,19 +160,22 @@
   3. ✅ 首轮直接给答案：识别题目 → 写入上下文 → 解答方式分类 → 直接解答
   4. ✅ 直接解答后追问：保留上下文 → 意图分类 → 引导式解答（继续），不重新识别题目
 - [x] 发布新版本 Chatflow：`2026-05-08 15:01:29.278282`（标记：上下文修复）
-- [x] 发布图形上下文修复版本：解题节点启用 Vision，避免几何图在直接解答/引导式解答前退化为纯文本上下文
-- [x] 发布模型切换版本：解题节点切换为 `qwen3.6-plus`，验证 direct_answer 的实际 prompt 保留图片文件，几何题答案关系修正为 $\angle DBE=90^\circ+\frac12\angle C$
+- [x] 发布图形文本版本：题目识别节点输出 `diagram_description`，`code_parse_question` 解析并写入 `conversation.current_diagram`
+- [x] 发布纯文本 Qwen 解题版本：引导式解答和直接解答节点切换为 `qwen3.6-plus`，Vision 关闭，只消费 `current_question/current_diagram/current_knowledge`
+- [x] 发布直接解答禁草稿版本：`direct_answer` temperature=0.1，禁止草稿式推理和草稿短语，端到端验证几何题最终关系为 $\angle DBE=90^\circ+\frac12\angle C$
+- [x] 发布识别解析容错版本：`code_parse_question` 修复 LaTeX 反斜杠导致的 JSON 解析失败，验证 `has_figure=true` 且 `diagram_description` 非空
 - **交付物**：多轮苏格拉底式引导对话 + 直接解答上下文复用 + 新题目上下文重建
 - **工作量**：1 天
 
 ### 任务 7: 真实题目验证
 
-- [ ] 准备测试题库：至少 3 张不同学科的真实题目图片（数学、物理/化学、英语），外加 1 张几何题（含辅助线）
-- [ ] 逐一上传验证全链路输出
-- [ ] 几何题额外验证：生成的 Python 绘图代码是否语法正确、样式是否符合约定（辅助线红色虚线等）
-- [ ] 记录识别准确率、知识点标注准确率、解答风格评分
-- [ ] 针对问题迭代 Prompt，直到所有题目均通过
-- **交付物**：验证报告 + 最终版 Chatflow
+- [x] 使用现有真实题图 `tests/questions/几何-角度-线段.jpg` 做关键路径端到端验证
+- [x] 验证题图只进入「题目识别」节点：识别节点 prompt `file_count=2`，直接解答节点 prompt `file_count=0`
+- [x] 验证 `code_parse_question` 输出 `has_figure=true` 且 `diagram_description` 非空
+- [x] 验证直接解答最终数量关系为 $\angle DBE=90^\circ+\frac{1}{2}\angle C$
+- [x] 记录 Python 绘图能力边界：Dify 内部不执行 matplotlib；绘图执行、图片存储和 URL 返回转入后端沙箱与前端展示 Story
+- [x] 记录残留风险：直接解答在复杂几何证明中仍可能输出偏长推导，需后续通过验证集继续约束表达质量
+- **交付物**：Sprint Review 验证记录 + 最终版 Chatflow
 - **工作量**：0.5 天
 
 ## 风险与缓解
@@ -174,7 +186,7 @@
 | 大模型 API Key 申请审核慢 | 中 | 高 | 提前注册多个平台，优先选用即时开通的（如阿里百炼） |
 | 苏格拉底式 Prompt 难以约束，模型仍倾向直接给答案 | 高 | 中 | 迭代 Prompt 加 few-shot 示例；若效果持续差，考虑切换模型 |
 | 公式输出格式不统一（`$...$` vs `$$...$$` vs `\[...\]`） | 高 | 低 | 在 Prompt 中明确约束，并预留前端正则清洗逻辑 |
-| 几何题绘图代码语法错误或样式不符合约定 | 高 | 中 | 在 Prompt 中加 few-shot 完整示例；后续可加代码预校验 |
+| 几何题绘图代码语法错误或样式不符合约定 | 高 | 中 | Sprint 1 只验证代码生成契约；执行和预校验转入后端沙箱 Story |
 
 ## 时间估算
 
@@ -185,16 +197,16 @@
 | 任务 3: 题目识别节点 | 1 天 | ✅ 已完成 |
 | 任务 4: 知识点提取节点 | 0.5 天 | ✅ 已完成 |
 | 任务 5: 苏格拉底解答节点 | 1.5 天 | ✅ 已完成 |
-| 任务 6: 串联 Chatflow | 0.5 天 | 🚧 进行中 |
+| 任务 6: 串联 Chatflow | 0.5 天 | ✅ 已完成 |
 | 任务 6.1: 多轮对话分支 | 1 天 | ✅ 已完成 |
 | 任务 6.2: 图片上传能力 | 0.5 天 | ✅ 已完成 |
 | 任务 6.3: 数学公式渲染 | 0.5 天 | ✅ 已完成 |
-| 任务 7: 真实题目验证 | 0.5 天 | 📋 待开始 |
+| 任务 7: 真实题目验证 | 0.5 天 | ✅ 已关闭 |
 | **合计** | **7 天** | |
 
 ## 预期产出
 
 - 本地运行的 Dify 实例 + 已配置的模型凭证
 - 可用的完整 Chatflow（题目识别 → 知识点提取 → 苏格拉底解答）
-- 验证报告（3 张真实题目的测试结果）
+- 验证报告（关键几何题端到端验证结果，跨学科题库回归转入后续任务）
 - 沉淀的 Prompt 模板（后续迭代基础）

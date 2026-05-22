@@ -1,0 +1,60 @@
+{
+	"pages": [
+		{
+			"path": "pages/chat/index",
+			"style": {
+				"navigationBarTitleText": "答疑"
+			}
+		},
+		{
+			"path": "pages/history/index",
+			"style": {
+				"navigationBarTitleText": "历史"
+			}
+		},
+		{
+			"path": "pages/mine/index",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "StudyHelper",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F5F5"
+	},
+	"tabBar": {
+		"color": "#999999",
+		"selectedColor": "#2B7FFF",
+		"backgroundColor": "#FFFFFF",
+		"borderStyle": "black",
+		"list": [
+			{
+				"pagePath": "pages/chat/index",
+				"text": "答疑",
+				"iconPath": "static/tab-chat.png",
+				"selectedIconPath": "static/tab-chat-active.png"
+			},
+			{
+				"pagePath": "pages/history/index",
+				"text": "历史",
+				"iconPath": "static/tab-history.png",
+				"selectedIconPath": "static/tab-history-active.png"
+			},
+			{
+				"pagePath": "pages/mine/index",
+				"text": "我的",
+				"iconPath": "static/tab-mine.png",
+				"selectedIconPath": "static/tab-mine-active.png"
+			}
+		]
+	},
+	"easycom": {
+		"autoscan": true,
+		"custom": {
+			"^uni-(.*)": "@dcloudio/uni-ui/lib/uni-$1/uni-$1.vue"
+		}
+	}
+}

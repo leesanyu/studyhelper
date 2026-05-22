@@ -17,10 +17,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 每个子代理专注于一个具体的切入点以确保执行聚焦。
 
 ### 3. 自我改进循环 (Self-Improvement Loop)
-- 在收到用户的**任何**纠正后：立即更新 `tasks/lessons.md` 记录该模式。
-- 为自己编写规则以防止同样的错误再次发生。
-- 无情地迭代这些教训，直到错误率下降。
-- 在会话开始时审查与当前项目相关的教训。
+- 收到用户纠正后，先判断它是否暴露了跨任务、跨模块可复用的原则或方法论。
+- 只有具备普适性的模式才进入 `tasks/lessons.md`；一次性事实、具体路径、端口、临时实现细节不生成全局规则。
+- 新增规则前先查是否能合并到已有条目，优先改写和压缩旧规则，避免按纠正次数堆叠条目。
+- 在会话开始时按当前任务定向审查相关教训，不为了“了解背景”全文扩散。
 
 ### 4. 完成前验证 (Verification Before Done)
 - 在没有证明其有效之前，**绝不**标记任务为完成。
@@ -100,6 +100,23 @@ tasks/
 1. **代码与文档同步**：每个 Story 完成后立即更新文档
 2. **文档要准确**：确保文档与实际代码一致
 3. **文档要完整**：用户手册、开发者指南、API 文档都要完善
+
+## Agent 架构：Plan-and-Solve + Reflexion
+
+四层流水线，详细设计见 `tasks/sprints/sprint-refactor/planning.md`。
+
+```
+规划层(Plan) → 工具执行(Tool) → 执行层(Solve) → 反思层(Reflexion)
+```
+
+核心约束：
+- **不是 ReAct**：规划层一次性输出 `tool_calls`，编排层按序执行，不做 LLM 循环决策
+- **先缓冲再流式**：执行层完整输出 → 反思层检查 → 再流式发送
+- **反思两级检查**：正则必过（每轮零开销），LLM 按需触发（仅 `difficulty=="困难"` 或用户不满）
+- **图片走摘要**：图片以摘要文本传入规划层，base64 只在工具执行时使用
+- **学生优先**：学生要求直接答案时，strategy 必须切为 `direct_answer`
+- **会话状态由编排层管**：`current_question`/`current_knowledge` 在 `ChatSession` 表，工具调用后更新；`context_ready` 由 `current_question IS NOT NULL` 推导
+- **模型配置**：默认供应商共享 `llm_api_url`/`llm_api_key`，6 个场景各自配模型名，按需覆盖 `_url`/`_key`
 
 ## 核心原则
 

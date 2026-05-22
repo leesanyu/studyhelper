@@ -1,7 +1,6 @@
 # ==================================================================
 # StudyHelper 业务服务 Docker Compose
 # 包含：反向代理、业务后端、数据库、缓存、对象存储、代码沙箱
-# Dify 使用官方 docker-compose 独立运行，通过共享网络互联
 # ==================================================================
 
 services:
@@ -20,6 +19,8 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       # 前端 H5 构建产物（Uni-app 编译输出目录）
       - ../frontend/dist/build/h5:/usr/share/nginx/html:ro
+      # 静态资源：上传图片和沙箱生成图片（与 backend 共享同一 named volume）
+      - assets_data:/usr/share/nginx/assets:ro
     ports:
       - "${NGINX_HTTP_PORT:-8080}:80"
     depends_on:
@@ -31,9 +32,8 @@ services:
 
   # ----------------------------------------------------------------
   # 业务后端：FastAPI
-  # 鉴权、数据持久化、Dify API 中转、代码沙箱调度
-  # 服务名用 backend 而非 api，避免与 Dify 的 api 服务在共享网络中 DNS 冲突
-  # Sprint 2 后端代码就绪后启动：docker compose --profile backend up -d
+  # 鉴权、数据持久化、Agent 编排、代码沙箱调度
+  # 启动：docker compose --profile backend up -d
   # ----------------------------------------------------------------
   backend:
     build:
@@ -51,8 +51,6 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - MINIO_ENDPOINT=minio:9000
-      # Dify API 在共享网络中的服务名（需在 Dify compose 中加入 studyhelper_net）
-      - DIFY_API_URL=http://api:5001
     depends_on:
       business_db:
         condition: service_healthy
@@ -64,6 +62,8 @@ services:
       - ../backend:/app
       # 挂载 Docker socket，使 backend 可通过 Docker SDK 启动/管理沙箱容器
       - /var/run/docker.sock:/var/run/docker.sock
+      # 静态资源：上传图片和沙箱生成图片（与 nginx 共享同一 named volume）
+      - assets_data:/tmp/studyhelper-assets
     networks:
       - studyhelper_net
 
@@ -164,6 +164,7 @@ volumes:
   business_db_data:
   redis_data:
   minio_data:
+  assets_data:
 
 networks:
   studyhelper_net:

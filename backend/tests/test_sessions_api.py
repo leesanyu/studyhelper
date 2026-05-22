@@ -80,7 +80,6 @@ async def test_session_detail_returns_message_history_and_summary():
                 role="assistant",
                 content="答案是 42°",
                 mode="direct",
-                dify_message_id="dify-msg-1",
                 knowledge_points=["角平分线"],
                 raw_metadata={"subject": "数学"},
             )
@@ -98,12 +97,11 @@ async def test_session_detail_returns_message_history_and_summary():
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][0]["attachments"] == [{"asset_id": "asset-1"}]
     assert body["messages"][1]["role"] == "assistant"
-    assert body["messages"][1]["dify_message_id"] == "dify-msg-1"
     assert body["messages"][1]["knowledge_points"] == ["角平分线"]
 
 
 @pytest.mark.asyncio
-async def test_session_context_update_replaces_only_for_new_question():
+async def test_session_context_update_always_overwrites():
     service = InMemorySessionService()
     session = await service.create_session(
         request=SessionCreateRequest(
@@ -114,20 +112,24 @@ async def test_session_context_update_replaces_only_for_new_question():
 
     await service.update_context(
         session["session_id"],
-        mode="new_question",
         current_question="求角 A",
         current_diagram="AB 与 CD 相交",
         current_knowledge={"points": ["对顶角"]},
-    )
-    await service.update_context(
-        session["session_id"],
-        mode="direct",
-        current_question="不应覆盖",
-        current_diagram="不应覆盖",
-        current_knowledge={"points": ["不应覆盖"]},
     )
 
     detail = await service.get_session(session["session_id"])
     assert detail["current_question"] == "求角 A"
     assert detail["current_diagram"] == "AB 与 CD 相交"
     assert detail["current_knowledge"] == {"points": ["对顶角"]}
+
+    await service.update_context(
+        session["session_id"],
+        current_question="新问题",
+        current_diagram="新图",
+        current_knowledge={"points": ["新知识点"]},
+    )
+
+    detail = await service.get_session(session["session_id"])
+    assert detail["current_question"] == "新问题"
+    assert detail["current_diagram"] == "新图"
+    assert detail["current_knowledge"] == {"points": ["新知识点"]}

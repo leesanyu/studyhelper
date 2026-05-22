@@ -22,7 +22,6 @@ class FakeFileService:
         return {
             "asset_id": "asset-1",
             "preview_url": "/assets/question.png",
-            "dify_file_id": "file-1",
             "mime_type": file.content_type,
             "size": len(content),
         }
@@ -33,7 +32,7 @@ async def fake_file_service():
 
 
 @pytest.mark.asyncio
-async def test_file_upload_returns_asset_and_dify_file_id():
+async def test_file_upload_returns_asset():
     app = create_app()
     app.dependency_overrides[get_file_service] = fake_file_service
     transport = httpx.ASGITransport(app=app)
@@ -49,7 +48,6 @@ async def test_file_upload_returns_asset_and_dify_file_id():
     assert response.json() == {
         "asset_id": "asset-1",
         "preview_url": "/assets/question.png",
-        "dify_file_id": "file-1",
         "mime_type": "image/png",
         "size": len(PNG_1X1),
     }

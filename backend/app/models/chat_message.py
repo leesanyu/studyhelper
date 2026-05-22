@@ -16,7 +16,6 @@ class ChatMessage(IdMixin, TimestampMixin, Base):
     role: Mapped[str] = mapped_column(String(32), index=True)
     content: Mapped[str] = mapped_column(Text)
     mode: Mapped[str | None] = mapped_column(String(32))
-    dify_message_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
     attachments: Mapped[list | None] = mapped_column(JSON, default=list)
     knowledge_points: Mapped[list | None] = mapped_column(JSON, default=list)
     raw_metadata: Mapped[dict | None] = mapped_column(JSON, default=dict)

@@ -34,13 +34,42 @@ class Settings(BaseSettings):
     upload_jpeg_quality: int = 85
     upload_webp_quality: int = 85
 
-    dify_api_url: str = "http://localhost:5001"
-    dify_api_key: str = Field(default="your-dify-app-api-key", repr=False)
+    # LLM 配置：默认供应商 + 按模型可选覆盖
+    llm_api_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    llm_api_key: str = Field(default="your-llm-api-key", repr=False)
+
+    # 6 个场景各自配模型名，url/key 可选覆盖（None 则用默认值）
+    llm_model_planning: str = "qwen3.6-plus"
+    llm_model_planning_url: str | None = None
+    llm_model_planning_key: str | None = None
+
+    llm_model_question_parse: str = "qwen3.6-plus"
+    llm_model_question_parse_url: str | None = None
+    llm_model_question_parse_key: str | None = None
+
+    llm_model_solving: str = "qwen3.6-plus"
+    llm_model_solving_url: str | None = None
+    llm_model_solving_key: str | None = None
+
+    llm_model_reflexion: str = "qwen3.6-plus"
+    llm_model_reflexion_url: str | None = None
+    llm_model_reflexion_key: str | None = None
+
+    llm_model_vision: str = "qwen-vl-max"
+    llm_model_vision_url: str | None = None
+    llm_model_vision_key: str | None = None
+
+    llm_model_knowledge: str = "qwen3.6-plus"
+    llm_model_knowledge_url: str | None = None
+    llm_model_knowledge_key: str | None = None
 
     sandbox_timeout: int = 5
     sandbox_memory_limit: str = "256m"
     sandbox_cpu_limit: float = 1.0
     sandbox_image: str = "studyhelper-code-sandbox:latest"
+
+    # CORS：开发环境填 ["*"] 或具体 origin，生产环境由 Nginx 同源代理可留空
+    cors_allow_origins: list[str] = Field(default_factory=list)
 
     @property
     def database_url(self) -> str:

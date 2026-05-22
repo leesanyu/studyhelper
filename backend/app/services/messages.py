@@ -5,6 +5,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Protocol
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat_message import ChatMessage
@@ -18,7 +19,6 @@ class ChatMessageCreate:
     role: str
     content: str
     mode: str | None = None
-    dify_message_id: str | None = None
     attachments: list = field(default_factory=list)
     knowledge_points: list = field(default_factory=list)
     raw_metadata: dict = field(default_factory=dict)
@@ -50,7 +50,7 @@ class InMemoryChatMessageRepository:
                     "session_id": message.session_id,
                     "subject": subject,
                     "knowledge_point": point,
-                    "source": "dify",
+                    "source": "agent",
                 }
             )
 
@@ -59,21 +59,44 @@ class SqlAlchemyChatMessageRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def get_messages(self, session_id: str, limit: int = 20) -> list[dict]:
+        result = await self._session.execute(
+            select(ChatMessage)
+            .where(ChatMessage.session_id == session_id)
+            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+            .limit(limit)
+        )
+        rows = list(result.scalars().all())
+        rows.reverse()
+        return [
+            {
+                "role": row.role,
+                "content": row.content,
+                "mode": row.mode,
+                "attachments": row.attachments or [],
+                "knowledge_points": row.knowledge_points or [],
+                "raw_metadata": row.raw_metadata or {},
+            }
+            for row in rows
+        ]
+
     async def create_message(self, message: ChatMessageCreate) -> dict:
         row = ChatMessage(
             session_id=message.session_id,
             role=message.role,
             content=message.content,
             mode=message.mode,
-            dify_message_id=message.dify_message_id,
             attachments=message.attachments,
             knowledge_points=message.knowledge_points,
             raw_metadata=message.raw_metadata,
         )
         self._session.add(row)
+        await self._session.flush()
         await self._create_tag_history(row=row, message=message)
         await self._session.commit()
-        return asdict(message)
+        payload = asdict(message)
+        payload["message_id"] = row.id
+        return payload
 
     async def _create_tag_history(self, *, row: ChatMessage, message: ChatMessageCreate) -> None:
         subject = message.raw_metadata.get("subject")
@@ -90,6 +113,6 @@ class SqlAlchemyChatMessageRepository:
                     message_id=row.id,
                     subject=subject,
                     knowledge_point=point,
-                    source="dify",
+                    source="agent",
                 )
             )

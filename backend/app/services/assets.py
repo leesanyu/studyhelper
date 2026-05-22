@@ -18,7 +18,6 @@ class AssetCreate:
     storage_backend: str
     object_key: str
     url: str
-    dify_file_id: str | None
     filename: str | None
     mime_type: str
     size_bytes: int
@@ -65,7 +64,6 @@ class SqlAlchemyAssetRepository:
             storage_backend=asset.storage_backend,
             object_key=asset.object_key,
             url=asset.url,
-            dify_file_id=asset.dify_file_id,
             filename=asset.filename,
             mime_type=asset.mime_type,
             size_bytes=asset.size_bytes,
@@ -90,7 +88,6 @@ class SqlAlchemyAssetRepository:
                 "storage_backend": row.storage_backend,
                 "object_key": row.object_key,
                 "url": row.url,
-                "dify_file_id": row.dify_file_id,
                 "filename": row.filename,
                 "mime_type": row.mime_type,
                 "size_bytes": row.size_bytes,

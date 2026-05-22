@@ -15,19 +15,17 @@ from app.services.assets import AssetCreate, AssetRepository
 from app.services.storage import AssetStorage
 
 
-class DifyUploadClient(Protocol):
-    async def upload_file(
-        self, *, filename: str, content: bytes, mime_type: str, user: str
-    ) -> dict:
-        ...
-
-
 class FileService(Protocol):
     async def upload_image(self, *, file: UploadFile, client_user_id: str) -> dict:
         ...
 
 
 class ImageUploadService:
+    """图片上传服务：校验 → 压缩 → 保存到存储 → 记录资产。
+
+    不再依赖 DifyUploadClient，图片直接保存到本地/MinIO 存储。
+    """
+
     allowed_extensions = {
         "image/png": {".png"},
         "image/jpeg": {".jpg", ".jpeg"},
@@ -42,7 +40,6 @@ class ImageUploadService:
     def __init__(
         self,
         *,
-        dify_client: DifyUploadClient,
         asset_repository: AssetRepository,
         storage: AssetStorage,
         max_bytes: int = 20 * 1024 * 1024,
@@ -50,7 +47,6 @@ class ImageUploadService:
         jpeg_quality: int = 85,
         webp_quality: int = 85,
     ) -> None:
-        self._dify_client = dify_client
         self._asset_repository = asset_repository
         self._storage = storage
         self.max_bytes = max_bytes
@@ -74,14 +70,6 @@ class ImageUploadService:
             height=height,
         )
 
-        dify_response = await self._dify_client.upload_file(
-            filename=file.filename or f"question{extension}",
-            content=processed_content,
-            mime_type=mime_type,
-            user=client_user_id,
-        )
-        dify_file_id = dify_response.get("id") or dify_response.get("file_id")
-
         asset_id = str(uuid4())
         stored = await self._storage.save(
             asset_id=asset_id, content=processed_content, extension=extension
@@ -93,7 +81,6 @@ class ImageUploadService:
                 storage_backend=stored["storage_backend"],
                 object_key=stored["object_key"],
                 url=stored["url"],
-                dify_file_id=dify_file_id,
                 filename=file.filename,
                 mime_type=mime_type,
                 size_bytes=len(processed_content),
@@ -106,7 +93,6 @@ class ImageUploadService:
         return {
             "asset_id": asset_id,
             "preview_url": stored["url"],
-            "dify_file_id": dify_file_id,
             "mime_type": mime_type,
             "size": len(processed_content),
         }

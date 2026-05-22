@@ -19,7 +19,6 @@ class Asset(IdMixin, TimestampMixin, Base):
     storage_backend: Mapped[str] = mapped_column(String(32), default="local")
     object_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
     url: Mapped[str] = mapped_column(String(1024))
-    dify_file_id: Mapped[str | None] = mapped_column(String(128), index=True)
     filename: Mapped[str | None] = mapped_column(String(255))
     mime_type: Mapped[str | None] = mapped_column(String(128))
     size_bytes: Mapped[int | None] = mapped_column(Integer)

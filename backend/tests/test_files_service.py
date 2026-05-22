@@ -19,26 +19,6 @@ PNG_1X1 = (
 )
 
 
-class FakeDifyUploadClient:
-    def __init__(self, response: dict | None = None, error: StudyHelperError | None = None) -> None:
-        self.response = response or {"id": "dify-file-1"}
-        self.error = error
-        self.calls: list[dict] = []
-
-    async def upload_file(self, *, filename: str, content: bytes, mime_type: str, user: str) -> dict:
-        self.calls.append(
-            {
-                "filename": filename,
-                "content": content,
-                "mime_type": mime_type,
-                "user": user,
-            }
-        )
-        if self.error:
-            raise self.error
-        return self.response
-
-
 class FailingStorage:
     async def save(self, *, asset_id: str, content: bytes, extension: str) -> dict:
         raise StudyHelperError("Storage failed", 500, "asset_storage_error")
@@ -71,11 +51,9 @@ def read_image_size(content: bytes) -> tuple[int, int]:
 
 
 @pytest.mark.asyncio
-async def test_upload_image_saves_preview_and_records_asset(tmp_path):
-    dify_client = FakeDifyUploadClient()
+async def test_upload_image_saves_and_records_asset(tmp_path):
     repository = InMemoryAssetRepository()
     service = ImageUploadService(
-        dify_client=dify_client,
         asset_repository=repository,
         storage=LocalAssetStorage(root_dir=tmp_path, base_url="/assets"),
     )
@@ -85,16 +63,12 @@ async def test_upload_image_saves_preview_and_records_asset(tmp_path):
         client_user_id="anon-1",
     )
 
-    assert response["dify_file_id"] == "dify-file-1"
     assert response["mime_type"] == "image/png"
     assert response["size"] == len(PNG_1X1)
     assert response["preview_url"].startswith("/assets/uploads/")
-    assert dify_client.calls[0]["user"] == "anon-1"
-    assert dify_client.calls[0]["filename"] == "question.png"
 
     stored_asset = repository.assets[response["asset_id"]]
     assert stored_asset["asset_type"] == "question_image"
-    assert stored_asset["dify_file_id"] == "dify-file-1"
     assert stored_asset["filename"] == "question.png"
     assert stored_asset["width"] == 1
     assert stored_asset["height"] == 1
@@ -102,12 +76,10 @@ async def test_upload_image_saves_preview_and_records_asset(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_upload_image_resizes_large_image_before_dify_and_storage(tmp_path):
+async def test_upload_image_resizes_large_image(tmp_path):
     original = make_jpeg(width=1600, height=1200)
-    dify_client = FakeDifyUploadClient()
     repository = InMemoryAssetRepository()
     service = ImageUploadService(
-        dify_client=dify_client,
         asset_repository=repository,
         storage=LocalAssetStorage(root_dir=tmp_path, base_url="/assets"),
         max_image_dimension=800,
@@ -119,18 +91,16 @@ async def test_upload_image_resizes_large_image_before_dify_and_storage(tmp_path
     )
 
     stored_asset = repository.assets[response["asset_id"]]
-    stored_content = (tmp_path / stored_asset["object_key"]).read_bytes()
     assert stored_asset["width"] == 800
     assert stored_asset["height"] == 600
+    stored_content = (tmp_path / stored_asset["object_key"]).read_bytes()
     assert response["size"] == len(stored_content)
-    assert read_image_size(dify_client.calls[0]["content"]) == (800, 600)
     assert read_image_size(stored_content) == (800, 600)
 
 
 @pytest.mark.asyncio
 async def test_upload_image_rejects_invalid_image_header(tmp_path):
     service = ImageUploadService(
-        dify_client=FakeDifyUploadClient(),
         asset_repository=InMemoryAssetRepository(),
         storage=LocalAssetStorage(root_dir=tmp_path, base_url="/assets"),
     )
@@ -148,7 +118,6 @@ async def test_upload_image_rejects_invalid_image_header(tmp_path):
 @pytest.mark.asyncio
 async def test_upload_image_rejects_extension_mismatch(tmp_path):
     service = ImageUploadService(
-        dify_client=FakeDifyUploadClient(),
         asset_repository=InMemoryAssetRepository(),
         storage=LocalAssetStorage(root_dir=tmp_path, base_url="/assets"),
     )
@@ -166,7 +135,6 @@ async def test_upload_image_rejects_extension_mismatch(tmp_path):
 @pytest.mark.asyncio
 async def test_upload_image_rejects_oversized_file(tmp_path):
     service = ImageUploadService(
-        dify_client=FakeDifyUploadClient(),
         asset_repository=InMemoryAssetRepository(),
         storage=LocalAssetStorage(root_dir=tmp_path, base_url="/assets"),
         max_bytes=len(PNG_1X1) - 1,
@@ -183,32 +151,9 @@ async def test_upload_image_rejects_oversized_file(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_upload_image_does_not_record_asset_when_dify_upload_fails(tmp_path):
-    repository = InMemoryAssetRepository()
-    service = ImageUploadService(
-        dify_client=FakeDifyUploadClient(
-            error=StudyHelperError("Dify upload failed", 502, "dify_file_upload_error")
-        ),
-        asset_repository=repository,
-        storage=LocalAssetStorage(root_dir=tmp_path, base_url="/assets"),
-    )
-
-    with pytest.raises(StudyHelperError) as exc_info:
-        await service.upload_image(
-            file=make_upload("question.png", PNG_1X1, "image/png"),
-            client_user_id="anon-1",
-        )
-
-    assert exc_info.value.code == "dify_file_upload_error"
-    assert repository.assets == {}
-    assert not list(tmp_path.rglob("*"))
-
-
-@pytest.mark.asyncio
 async def test_upload_image_does_not_record_asset_when_storage_fails():
     repository = InMemoryAssetRepository()
     service = ImageUploadService(
-        dify_client=FakeDifyUploadClient(),
         asset_repository=repository,
         storage=FailingStorage(),
     )

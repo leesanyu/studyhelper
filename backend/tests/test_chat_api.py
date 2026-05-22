@@ -21,7 +21,6 @@ class FakeChatService:
             "data": {
                 "session_id": request.session_id or "s1",
                 "message_id": "m1",
-                "dify_message_id": "dify-msg-1",
             },
         }
 
@@ -58,3 +57,4 @@ async def test_chat_completions_streams_normalized_sse_events():
         "message_end",
     ]
     assert payloads[1]["data"]["text"] == "第一步"
+    assert payloads[2]["data"]["message_id"] == "m1"

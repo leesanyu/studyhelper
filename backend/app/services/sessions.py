@@ -31,14 +31,10 @@ class ChatSessionRepository(Protocol):
     async def get_session(self, session_id: str) -> dict | None:
         ...
 
-    async def update_dify_conversation_id(self, session_id: str, conversation_id: str) -> None:
-        ...
-
     async def update_context(
         self,
         session_id: str,
         *,
-        mode: str,
         current_question: str | None = None,
         current_diagram: str | None = None,
         current_knowledge: dict | None = None,
@@ -87,7 +83,6 @@ class InMemorySessionService:
             "role": message.role,
             "content": message.content,
             "mode": message.mode,
-            "dify_message_id": message.dify_message_id,
             "attachments": list(message.attachments),
             "knowledge_points": list(message.knowledge_points),
             "raw_metadata": dict(message.raw_metadata),
@@ -111,13 +106,10 @@ class InMemorySessionService:
         self,
         session_id: str,
         *,
-        mode: str,
         current_question: str | None = None,
         current_diagram: str | None = None,
         current_knowledge: dict | None = None,
     ) -> None:
-        if mode != "new_question":
-            return
         session = self._sessions[session_id]
         session["current_question"] = current_question
         session["current_diagram"] = current_diagram
@@ -228,7 +220,6 @@ class SqlAlchemySessionService:
                 "role": row.role,
                 "content": row.content,
                 "mode": row.mode,
-                "dify_message_id": row.dify_message_id,
                 "attachments": row.attachments or [],
                 "knowledge_points": row.knowledge_points or [],
                 "raw_metadata": row.raw_metadata or {},
@@ -244,13 +235,10 @@ class SqlAlchemySessionService:
         self,
         session_id: str,
         *,
-        mode: str,
         current_question: str | None = None,
         current_diagram: str | None = None,
         current_knowledge: dict | None = None,
     ) -> None:
-        if mode != "new_question":
-            return
         await self._session.execute(
             update(ChatSession)
             .where(ChatSession.id == session_id)
@@ -279,31 +267,19 @@ class SqlAlchemyChatSessionRepository:
             "client_user_id": row.user_id,
             "title": row.title,
             "status": row.status,
-            "dify_conversation_id": row.dify_conversation_id,
             "current_question": row.current_question,
             "current_diagram": row.current_diagram,
             "current_knowledge": row.current_knowledge,
         }
 
-    async def update_dify_conversation_id(self, session_id: str, conversation_id: str) -> None:
-        await self._session.execute(
-            update(ChatSession)
-            .where(ChatSession.id == session_id)
-            .values(dify_conversation_id=conversation_id)
-        )
-        await self._session.commit()
-
     async def update_context(
         self,
         session_id: str,
         *,
-        mode: str,
         current_question: str | None = None,
         current_diagram: str | None = None,
         current_knowledge: dict | None = None,
     ) -> None:
-        if mode != "new_question":
-            return
         await self._session.execute(
             update(ChatSession)
             .where(ChatSession.id == session_id)

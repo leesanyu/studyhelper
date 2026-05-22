@@ -17,4 +17,4 @@ class UserTagHistory(IdMixin, TimestampMixin, Base):
     message_id: Mapped[str | None] = mapped_column(ForeignKey("chat_messages.id"), index=True)
     subject: Mapped[str] = mapped_column(String(128), index=True)
     knowledge_point: Mapped[str] = mapped_column(String(255), index=True)
-    source: Mapped[str] = mapped_column(String(32), default="dify")
+    source: Mapped[str] = mapped_column(String(32), default="agent")

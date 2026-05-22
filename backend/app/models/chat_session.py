@@ -17,7 +17,6 @@ class ChatSession(IdMixin, TimestampMixin, Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     title: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(32), default="active", index=True)
-    dify_conversation_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
     current_question: Mapped[str | None] = mapped_column(Text)
     current_diagram: Mapped[str | None] = mapped_column(Text)
     current_knowledge: Mapped[dict | None] = mapped_column(JSON)

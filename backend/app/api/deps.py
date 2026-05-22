@@ -7,27 +7,40 @@ from pathlib import Path
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.chat import ChatService, DifyChatService
+from app.agent.llm_client import LLMClient
+from app.agent.service import AgentService
 from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.services.assets import SqlAlchemyAssetRepository
-from app.services.dify import DifyClient
+from app.services.chat import AgentChatService, ChatService
 from app.services.files import FileService, ImageUploadService
 from app.services.messages import SqlAlchemyChatMessageRepository
 from app.services.sandbox import DockerPythonFigureSandboxService, PythonFigureSandboxService
 from app.services.sessions import SessionService, SqlAlchemyChatSessionRepository, SqlAlchemySessionService
 from app.services.storage import LocalAssetStorage
 
+
 async def get_chat_service(
     db_session: AsyncSession = Depends(get_db_session),
 ) -> ChatService:
     settings = get_settings()
-    return DifyChatService(
-        dify_client=DifyClient(settings.dify_api_url, settings.dify_api_key),
+    llm_client = LLMClient(settings)
+    agent_service = AgentService(
+        llm_client=llm_client,
         asset_repository=SqlAlchemyAssetRepository(db_session),
         session_repository=SqlAlchemyChatSessionRepository(db_session),
         message_repository=SqlAlchemyChatMessageRepository(db_session),
+        sandbox_service=DockerPythonFigureSandboxService(
+            settings=settings,
+            asset_repository=SqlAlchemyAssetRepository(db_session),
+            storage=LocalAssetStorage(
+                root_dir=Path(settings.asset_storage_path),
+                base_url=settings.asset_base_url,
+            ),
+        ),
+        settings=settings,
     )
+    return AgentChatService(agent_service=agent_service)
 
 
 async def get_file_service(
@@ -35,7 +48,6 @@ async def get_file_service(
 ) -> FileService:
     settings = get_settings()
     return ImageUploadService(
-        dify_client=DifyClient(settings.dify_api_url, settings.dify_api_key),
         asset_repository=SqlAlchemyAssetRepository(db_session),
         storage=LocalAssetStorage(
             root_dir=Path(settings.asset_storage_path),

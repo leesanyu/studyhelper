@@ -23,7 +23,6 @@ def test_core_tables_support_chat_and_asset_persistence():
             user_id=user.id,
             title="几何题",
             status="active",
-            dify_conversation_id="dify-conv-1",
             current_question="求角度关系",
             current_diagram="A, B, C are connected",
             current_knowledge={"subject": "初中数学", "points": ["角平分线"]},
@@ -36,7 +35,6 @@ def test_core_tables_support_chat_and_asset_persistence():
             role="assistant",
             content="角度关系为 ...",
             mode="direct",
-            dify_message_id="dify-msg-1",
             knowledge_points=["角平分线"],
             raw_metadata={"source": "mock"},
         )
@@ -51,7 +49,6 @@ def test_core_tables_support_chat_and_asset_persistence():
             storage_backend="local",
             object_key="figures/1.png",
             url="/assets/figures/1.png",
-            dify_file_id=None,
             filename="1.png",
             mime_type="image/png",
             size_bytes=128,
@@ -64,17 +61,17 @@ def test_core_tables_support_chat_and_asset_persistence():
             message_id=message.id,
             subject="初中数学",
             knowledge_point="角平分线",
-            source="dify",
+            source="agent",
         )
         session.add_all([asset, tag])
         session.commit()
 
     with session_factory() as session:
         stored_session = session.execute(
-            select(ChatSession).where(ChatSession.dify_conversation_id == "dify-conv-1")
+            select(ChatSession).where(ChatSession.title == "几何题")
         ).scalar_one()
         stored_message = session.execute(
-            select(ChatMessage).where(ChatMessage.dify_message_id == "dify-msg-1")
+            select(ChatMessage).where(ChatMessage.content.contains("角度关系"))
         ).scalar_one()
         stored_asset = session.execute(
             select(Asset).where(Asset.object_key == "figures/1.png")
@@ -88,5 +85,3 @@ def test_core_tables_support_chat_and_asset_persistence():
     assert stored_asset.session_id == stored_session.id
     assert stored_asset.message_id == stored_message.id
     assert stored_tag.user_id == stored_session.user_id
-
-    engine.dispose()

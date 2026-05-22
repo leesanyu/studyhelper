@@ -4,314 +4,65 @@
 
 import pytest
 
-from app.services.assets import AssetCreate, InMemoryAssetRepository
-from app.services.chat import DifyChatService
-from app.services.messages import InMemoryChatMessageRepository
 from app.schemas.chat import ChatCompletionRequest
+from app.services.chat import AgentChatService, InMemoryChatService
 
 
-class FakeDifyChatClient:
-    def __init__(self) -> None:
-        self.calls: list[dict] = []
+class FakeAgentService:
+    """Mock AgentService，返回固定事件序列。"""
 
-    async def stream_chat(self, query, user, conversation_id, files=None, inputs=None):
-        self.calls.append(
-            {
-                "query": query,
-                "user": user,
-                "conversation_id": conversation_id,
-                "files": files,
-                "inputs": inputs,
-            }
-        )
-        yield {"event": "message_start", "data": {"conversation_id": "conv-1"}}
-        yield {"event": "delta", "data": {"text": "解题步骤"}}
-        yield {"event": "message_end", "data": {"dify_message_id": "dify-msg-1"}}
+    def __init__(self, events=None):
+        self.events = events or []
+        self._calls: list[dict] = []
 
-
-class FakeDifyChatClientWithKnowledge:
-    async def stream_chat(self, query, user, conversation_id, files=None, inputs=None):
-        yield {"event": "message_start", "data": {"conversation_id": "conv-1"}}
-        yield {"event": "delta", "data": {"text": "解题步骤"}}
-        yield {
-            "event": "message_end",
-            "data": {
-                "dify_message_id": "dify-msg-1",
-                "subject": "数学",
-                "knowledge_points": ["角平分线"],
-            },
-        }
+    async def stream_chat(self, *, session_id=None, message="", asset_ids=None, client_user_id="anonymous"):
+        self._calls.append({
+            "session_id": session_id,
+            "message": message,
+            "asset_ids": asset_ids,
+            "client_user_id": client_user_id,
+        })
+        for event in self.events:
+            yield event
 
 
-class FakeChatSessionRepository:
-    def __init__(self, sessions: dict[str, dict]) -> None:
-        self.sessions = sessions
-        self.updated_conversations: list[tuple[str, str]] = []
-        self.context_updates: list[dict] = []
-
-    async def get_session(self, session_id: str) -> dict | None:
-        return self.sessions.get(session_id)
-
-    async def update_dify_conversation_id(self, session_id: str, conversation_id: str) -> None:
-        self.updated_conversations.append((session_id, conversation_id))
-        self.sessions[session_id]["dify_conversation_id"] = conversation_id
-
-    async def update_context(
-        self,
-        session_id: str,
-        *,
-        mode: str,
-        current_question: str | None = None,
-        current_diagram: str | None = None,
-        current_knowledge: dict | None = None,
-    ) -> None:
-        self.context_updates.append(
-            {
-                "session_id": session_id,
-                "mode": mode,
-                "current_question": current_question,
-                "current_diagram": current_diagram,
-                "current_knowledge": current_knowledge,
-            }
-        )
+class TestInMemoryChatService:
+    @pytest.mark.asyncio
+    async def test_basic_response(self):
+        service = InMemoryChatService()
+        request = ChatCompletionRequest(session_id="s1", message="你好")
+        events = [e async for e in service.stream_chat(request)]
+        assert len(events) == 3
+        assert events[0]["event"] == "message_start"
+        assert events[1]["event"] == "delta"
+        assert events[1]["data"]["text"] == "你好"
+        assert events[2]["event"] == "message_end"
 
 
-@pytest.mark.asyncio
-async def test_dify_chat_service_maps_asset_ids_to_dify_file_payload():
-    asset_repository = InMemoryAssetRepository()
-    await asset_repository.create_asset(
-        AssetCreate(
-            asset_id="asset-1",
-            asset_type="question_image",
-            storage_backend="local",
-            object_key="uploads/asset-1.png",
-            url="/assets/uploads/asset-1.png",
-            dify_file_id="dify-file-1",
-            filename="question.png",
-            mime_type="image/png",
-            size_bytes=128,
-            width=640,
-            height=480,
-        )
-    )
-    dify_client = FakeDifyChatClient()
-    service = DifyChatService(dify_client=dify_client, asset_repository=asset_repository)
+class TestAgentChatService:
+    @pytest.mark.asyncio
+    async def test_delegates_to_agent_service(self):
+        agent = FakeAgentService(events=[
+            {"event": "message_start", "data": {"session_id": "s1"}},
+            {"event": "delta", "data": {"text": "同学你好"}},
+            {"event": "message_end", "data": {"session_id": "s1", "message_id": "m1"}},
+        ])
+        service = AgentChatService(agent_service=agent)
+        request = ChatCompletionRequest(session_id="s1", message="你好")
+        events = [e async for e in service.stream_chat(request)]
+        assert len(events) == 3
+        assert events[0]["event"] == "message_start"
+        assert events[1]["data"]["text"] == "同学你好"
 
-    events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(
-                session_id="session-1",
-                message="请直接解答",
-                mode="direct",
-                asset_ids=["asset-1"],
-                client_user_id="anon-1",
-            )
-        )
-    ]
-
-    assert [event["event"] for event in events] == ["message_start", "delta", "message_end"]
-    assert dify_client.calls[0]["query"] == "请直接解答"
-    assert dify_client.calls[0]["user"] == "anon-1"
-    assert dify_client.calls[0]["conversation_id"] is None
-    assert dify_client.calls[0]["inputs"] == {"mode": "direct"}
-    assert dify_client.calls[0]["files"] == [
-        {
-            "type": "image",
-            "transfer_method": "local_file",
-            "upload_file_id": "dify-file-1",
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_dify_chat_service_uses_session_conversation_id_when_present():
-    dify_client = FakeDifyChatClient()
-    service = DifyChatService(
-        dify_client=dify_client,
-        asset_repository=InMemoryAssetRepository(),
-        session_repository=FakeChatSessionRepository(
-            {"session-1": {"session_id": "session-1", "dify_conversation_id": "conv-existing"}}
-        ),
-    )
-
-    events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(
-                session_id="session-1",
-                message="继续追问",
-                mode="guide",
-                client_user_id="anon-1",
-            )
-        )
-    ]
-
-    assert dify_client.calls[0]["conversation_id"] == "conv-existing"
-    assert events[0]["data"]["session_id"] == "session-1"
-
-
-@pytest.mark.asyncio
-async def test_dify_chat_service_persists_user_and_assistant_messages():
-    dify_client = FakeDifyChatClient()
-    message_repository = InMemoryChatMessageRepository()
-    service = DifyChatService(
-        dify_client=dify_client,
-        asset_repository=InMemoryAssetRepository(),
-        session_repository=FakeChatSessionRepository(
-            {"session-1": {"session_id": "session-1", "dify_conversation_id": "conv-existing"}}
-        ),
-        message_repository=message_repository,
-    )
-
-    events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(
-                session_id="session-1",
-                message="请直接解答",
-                mode="direct",
-                asset_ids=["asset-1"],
-                client_user_id="anon-1",
-            )
-        )
-    ]
-
-    assert [event["event"] for event in events] == ["error"]
-    assert message_repository.messages == []
-
-    events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(
-                session_id="session-1",
-                message="请直接解答",
-                mode="direct",
-                client_user_id="anon-1",
-            )
-        )
-    ]
-
-    assert [event["event"] for event in events] == ["message_start", "delta", "message_end"]
-    assert message_repository.messages[0]["role"] == "user"
-    assert message_repository.messages[0]["content"] == "请直接解答"
-    assert message_repository.messages[0]["mode"] == "direct"
-    assert message_repository.messages[1]["role"] == "assistant"
-    assert message_repository.messages[1]["content"] == "解题步骤"
-    assert message_repository.messages[1]["dify_message_id"] == "dify-msg-1"
-
-
-@pytest.mark.asyncio
-async def test_dify_chat_service_persists_assistant_knowledge_points():
-    message_repository = InMemoryChatMessageRepository()
-    service = DifyChatService(
-        dify_client=FakeDifyChatClientWithKnowledge(),
-        asset_repository=InMemoryAssetRepository(),
-        session_repository=FakeChatSessionRepository(
-            {"session-1": {"session_id": "session-1", "dify_conversation_id": None}}
-        ),
-        message_repository=message_repository,
-    )
-
-    _events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(session_id="session-1", message="请解答", client_user_id="anon-1")
-        )
-    ]
-
-    assistant_message = message_repository.messages[1]
-    assert assistant_message["knowledge_points"] == ["角平分线"]
-    assert assistant_message["raw_metadata"]["subject"] == "数学"
-    assert message_repository.tags == [
-        {
-            "session_id": "session-1",
-            "subject": "数学",
-            "knowledge_point": "角平分线",
-            "source": "dify",
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_dify_chat_service_updates_session_conversation_id_from_stream():
-    session_repository = FakeChatSessionRepository(
-        {"session-1": {"session_id": "session-1", "dify_conversation_id": None}}
-    )
-    service = DifyChatService(
-        dify_client=FakeDifyChatClient(),
-        asset_repository=InMemoryAssetRepository(),
-        session_repository=session_repository,
-    )
-
-    events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(session_id="session-1", message="新题", client_user_id="anon-1")
-        )
-    ]
-
-    assert [event["event"] for event in events] == ["message_start", "delta", "message_end"]
-    assert session_repository.updated_conversations == [("session-1", "conv-1")]
-
-
-@pytest.mark.asyncio
-async def test_dify_chat_service_updates_question_context_for_new_question():
-    session_repository = FakeChatSessionRepository(
-        {"session-1": {"session_id": "session-1", "dify_conversation_id": None}}
-    )
-    service = DifyChatService(
-        dify_client=FakeDifyChatClient(),
-        asset_repository=InMemoryAssetRepository(),
-        session_repository=session_repository,
-    )
-
-    _events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(
-                session_id="session-1",
-                message="新题",
-                mode="new_question",
-                client_user_id="anon-1",
-                current_question="求角 A",
-                current_diagram="AB 与 CD 相交",
-                current_knowledge={"points": ["对顶角"]},
-            )
-        )
-    ]
-
-    assert session_repository.context_updates == [
-        {
-            "session_id": "session-1",
-            "mode": "new_question",
-            "current_question": "求角 A",
-            "current_diagram": "AB 与 CD 相交",
-            "current_knowledge": {"points": ["对顶角"]},
-        }
-    ]
-
-
-@pytest.mark.asyncio
-async def test_dify_chat_service_returns_error_event_when_asset_is_missing():
-    service = DifyChatService(
-        dify_client=FakeDifyChatClient(),
-        asset_repository=InMemoryAssetRepository(),
-    )
-
-    events = [
-        event
-        async for event in service.stream_chat(
-            ChatCompletionRequest(message="继续", asset_ids=["missing-asset"])
-        )
-    ]
-
-    assert events == [
-        {
-            "event": "error",
-            "data": {
-                "code": "asset_not_found",
-                "message": "Asset not found: missing-asset",
-            },
-        }
-    ]
+    @pytest.mark.asyncio
+    async def test_passes_asset_ids(self):
+        agent = FakeAgentService(events=[
+            {"event": "delta", "data": {"text": "收到图片"}},
+        ])
+        service = AgentChatService(agent_service=agent)
+        request = ChatCompletionRequest(session_id="s1", message="题目", asset_ids=["asset-1"])
+        # consume the stream
+        events = [e async for e in service.stream_chat(request)]
+        assert len(events) == 1
+        assert agent._calls[0]["asset_ids"] == ["asset-1"]
+        assert agent._calls[0]["message"] == "题目"

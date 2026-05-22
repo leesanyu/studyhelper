@@ -1,5 +1,7 @@
 # 节点 C：苏格拉底解答
 
+> **[已迁移至代码]** Sprint Refactor 后，此 Prompt 已迁移至 `backend/app/agent/prompts.py` 的 `build_solving_messages()` 函数（合并了节点 C 和节点 D）。本文件保留作历史参考。
+
 > 位置：Dify Chatflow → LLM 节点（引导式解答 + 直接解答）
 > 输入（首轮）：`conversation.current_question/current_diagram/current_knowledge`
 > 输入（继续引导）：`conversation.current_question/current_diagram/current_knowledge` + 对话历史（Memory）+ 用户最新回复

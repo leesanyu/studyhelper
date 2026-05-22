@@ -1,5 +1,7 @@
 # 节点 B：知识点提取
 
+> **[已迁移至代码]** Sprint Refactor 后，此 Prompt 已迁移至 `backend/app/agent/prompts.py` 的 `build_extract_knowledge_messages()` 函数。本文件保留作历史参考。
+
 > 位置：Dify Chatflow → LLM 节点 B
 > 输入：节点 A 输出的题干文本 + 学科
 > 输出：知识点标签 JSON

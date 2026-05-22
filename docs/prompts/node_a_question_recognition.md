@@ -1,5 +1,7 @@
 # 节点 A：题目识别
 
+> **[已迁移至代码]** Sprint Refactor 后，此 Prompt 已迁移至 `backend/app/agent/prompts.py` 的 `build_process_question_messages()` 函数。本文件保留作历史参考。
+
 > 位置：Dify Chatflow → LLM 节点 A（题目识别）
 > 输入：用户上传的题目图片 + 文字描述（sys.query + sys.files）
 > 输出：题干文本（含 LaTeX 公式）+ 学科分类 JSON + 图形拓扑文本 `diagram_description`

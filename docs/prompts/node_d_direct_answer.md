@@ -1,5 +1,7 @@
 # 节点 D：直接解答
 
+> **[已迁移至代码]** Sprint Refactor 后，此 Prompt 已合并至 `backend/app/agent/prompts.py` 的 `build_solving_messages()` 函数（strategy="direct_answer" 分支）。本文件保留作历史参考。
+
 > 位置：Dify Chatflow → LLM 节点（直接解答）
 > 触发：解答方式分类 / 意图分类为"直接给答案"
 > 输入：`conversation.current_question` + `conversation.current_diagram` + `conversation.current_knowledge` + 用户请求（`sys.query`）

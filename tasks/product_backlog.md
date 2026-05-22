@@ -8,16 +8,16 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 
 ## 待办调整原则
 
-1. **AI 编排层已定型**：Sprint 1 已验证 Dify Chatflow。图片只进入「题目识别」节点，下游解题节点消费 `current_question/current_diagram/current_knowledge` 纯文本上下文。
-2. **业务后端承担集成边界**：FastAPI 负责 Dify API 中转、文件上传代理、会话 ID 映射、消息持久化和沙箱执行，不让前端直接绑定 Dify 内部细节。
-3. **绘图能力拆成两段**：后端沙箱负责执行 `python:figure` 并生成图片；前端负责识别代码块、展示执行状态和渲染返回图片。
-4. **数据沉淀后置但埋点前置**：MVP 不做完整错题本和薄弱点分析，但后端消息结构需要保留知识点标签、Dify `conversation_id/message_id` 等字段，避免后续返工。
+1. **AI 编排层已定型**：Sprint Refactor 已将 Dify Chatflow 替换为自建 Agent 架构（Plan-and-Solve + Reflexion）。图片只进入 `process_question` 工具，下游执行层消费 `current_question/current_diagram/current_knowledge` 纯文本上下文。
+2. **业务后端承担集成边界**：FastAPI 负责 Agent 编排、文件上传、会话管理、消息持久化和沙箱执行，前端只对接后端 SSE 接口，不直接调用 LLM 或沙箱。
+3. **绘图能力后端主导**：后端沙箱执行 `python:figure` 并生成图片，通过 `figure_result` SSE 事件主动推送给前端；前端被动接收并渲染，无需主动调用沙箱接口。
+4. **数据沉淀后置但埋点前置**：MVP 不做完整错题本和薄弱点分析，但后端消息结构已保留知识点标签、token 用量（按层：planning/tools/solving/reflexion）等字段，避免后续返工。
 
 ---
 
 ## Epic 1: AI 编排层搭建 (P0)
 
-> 目标：本地部署 Dify，跑通"图片识别 → 知识点提取 → 苏格拉底解答"工作流
+> 目标：自建 Agent 架构（Plan-and-Solve + Reflexion），跑通"图片识别 → 知识点提取 → 苏格拉底解答"全链路
 
 | Story | 描述 | 优先级 | 状态 |
 |-------|------|--------|------|
@@ -28,22 +28,23 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 | 1.5 | 构建"苏格拉底解答"工作流节点：严格不直接给答案，先给出解题思路和第一步引导 | P0 | ✅ |
 | 1.6 | 串联完整 Chatflow（识别 → 提取 → 解答），约束输出格式：Markdown + LaTeX + `current_question/current_diagram/current_knowledge` 结构化会话变量，并完成图片上传、多轮上下文、直接解答和新题目分支 | P0 | ✅ |
 | 1.7 | 在 Dify 调试面板中用真实题目图片验证全链路输出质量 | P0 | ✅ |
+| R.1–R.8 | Sprint Refactor：将 Dify Chatflow 替换为自建 Agent 架构（Plan-and-Solve + Reflexion），实现规划层/工具层/执行层/反思层四层流水线，清理 Dify 依赖 | P0 | ✅ |
 
-> Sprint 1 结论：AI 编排层已闭环。几何题图形上下文通过 `current_diagram` 纯文本传递；Python 绘图执行不在 Dify 内部完成，转入 Epic 2.6 后端沙箱与 Epic 4.4 前端展示。
+> Sprint Refactor 结论：AI 编排层已迁移至自建 Agent 架构。几何题图形上下文通过 `current_diagram` 纯文本传递；Python 绘图执行由后端沙箱完成，通过 `figure_result` SSE 事件推送给前端。
 
 ---
 
 ## Epic 2: 业务后端搭建 (P0)
 
-> 目标：FastAPI 工程就绪，数据库建表，完成 Dify API 对接和流式接口封装
+> 目标：FastAPI 工程就绪，数据库建表，完成 Agent 编排和流式接口封装
 
 | Story | 描述 | 优先级 | 状态 |
 |-------|------|--------|------|
 | 2.1 | 初始化 FastAPI 工程：项目结构、路由、配置管理、日志、异常处理 | P0 | ✅ |
 | 2.2 | 设计并创建 PostgreSQL 数据库表：users（可匿名占位）、chat_sessions、chat_messages、user_tags_history、assets | P0 | ✅ |
-| 2.3 | 对接 Dify API，封装流式聊天接口 `POST /api/v1/chat/completions`（SSE 返回），映射 Dify `conversation_id/message_id` | P0 | ✅ |
-| 2.4 | 实现图片上传代理：接收图片 → 校验/压缩 → 调用 Dify `/v1/files/upload` 获取 `file_id`，本地或 MinIO 存储仅用于预览、审计和历史追溯 | P0 | ✅ |
-| 2.5 | 对话管理：创建/续接会话、获取历史消息、会话列表、同步新题目/继续追问/直接解答状态 | P0 | ✅ |
+| 2.3 | 实现流式聊天接口 `POST /api/v1/chat/completions`（SSE 返回），对接 Agent 编排服务，输出 message_start/delta/figure_result/message_end/error 事件 | P0 | ✅ |
+| 2.4 | 实现图片上传：接收图片 → 校验/压缩 → 本地存储，返回 `asset_id` 和 `preview_url` | P0 | ✅ |
+| 2.5 | 对话管理：创建/续接会话、获取历史消息、会话列表、同步题目上下文（current_question/current_knowledge/current_diagram） | P0 | ✅ |
 | 2.6 | 代码沙箱服务：Docker 容器隔离执行 `python:figure` 绘图代码，生成图片并返回 `asset_id` 或 URL（安全策略：禁止网络、只读文件系统、5 秒超时、资源限制） | P0 | ✅ |
 
 ---
@@ -60,7 +61,7 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 | 3.4 | 集成 markdown-it + KaTeX：渲染 AI 回复中的 Markdown 格式和数学公式 | P0 | 📋 |
 | 3.5 | 实现拍照/选图上传：调用摄像头或相册，压缩图片后上传到后端 | P0 | 📋 |
 | 3.6 | 图片预览：上传后在聊天框中展示图片缩略图 | P0 | 📋 |
-| 3.7 | 实现 AI 回复代码块识别：对普通代码块展示代码卡片，对 `python:figure` 展示绘图占位、执行中、失败重试和生成图片状态 | P0 | 📋 |
+| 3.7 | 实现 AI 回复代码块识别：对普通代码块展示代码卡片，对 `python:figure` 被动接收后端 `figure_result` 事件后渲染图片 | P0 | 📋 |
 
 ---
 
@@ -70,11 +71,12 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 
 | Story | 描述 | 优先级 | 状态 |
 |-------|------|--------|------|
-| 4.1 | Dify 工作流完善「分步拆解」分支：收到「不甚理解」指令后，基于当前题目上下文输出更细致的下一步引导 | P0 | 📋 |
-| 4.2 | Dify 工作流完善「总结 + 相似题」分支：收到「我会了」指令后总结要点并生成一道相似题 | P0 | 📋 |
-| 4.3 | 前端实现「不甚理解」/「我会了」悬浮反馈按钮，并通过后端透传反馈意图到 Dify 会话 | P0 | 📋 |
-| 4.4 | 几何题图形渲染：前端识别 `python:figure` 后调用后端沙箱执行，展示生成图片；依赖 Story 2.6 和 Story 3.7 | P0 | 📋 |
+| 4.1 | ~~Dify 工作流完善「分步拆解」分支~~ — **已由 Agent 规划层内置 `step_breakdown` 策略，无需单独实现** | P0 | ✅ |
+| 4.2 | ~~Dify 工作流完善「总结 + 相似题」分支~~ — **已由 Agent 规划层内置 `summarize_and_similar` 策略，无需单独实现** | P0 | ✅ |
+| 4.3 | 前端实现「不甚理解」/「我会了」悬浮反馈按钮，点击后发送自然语言消息，Agent 规划层自动识别意图并选择对应策略 | P0 | 📋 |
+| 4.4 | 几何题图形渲染：前端识别 `python:figure` 后被动接收后端 `figure_result` 事件，展示生成图片；依赖 Story 2.6 和 Story 3.7 | P0 | 📋 |
 | 4.5 | 建立核心答疑回归集：覆盖真实题图、直接解答、引导式解答、反馈分支和跨学科样例，作为 Sprint 验收固定检查 | P0 | ✅ |
+| 4.6 | 几何辅助线正确绘制：将题图识别结果升级为可校验的 `GeometryScene` 候选模型，辅助线通过结构化增量操作生成并渲染，避免 LLM 基于纯文本图形描述自由画图 | P0 | 💡 |
 
 ---
 
@@ -123,11 +125,12 @@ MVP 只做这一条链路，跑通后再叠加登录、数据沉淀和练习模�
 
 ## 关键依赖关系
 
-- Story 2.3 是前端聊天、反馈按钮和历史记录的统一后端入口，后续前端不直接调用 Dify。
-- Story 2.4 的图片上传结果应优先使用 Dify `file_id` 驱动题目识别，本地/MinIO URL 只服务前端预览、历史追溯和审计。
-- Story 4.4 依赖 Story 2.6 的沙箱执行能力，也依赖 Story 3.7 的代码块识别与状态展示能力。
+- Story 2.3 是前端聊天、反馈按钮和历史记录的统一后端入口，前端只对接后端 SSE 接口。
+- Story 2.4 的图片上传结果返回 `asset_id`，聊天请求通过 `asset_ids` 传递，后端 Agent 工具层负责读取图片内容。
+- Story 4.4 依赖 Story 2.6 的沙箱执行能力，也依赖 Story 3.7 的代码块识别与 `figure_result` 事件接收能力。
 - Story 5.2 依赖 Story 2.2、2.3 和 2.5 中的消息与知识点持久化，不再重复定义原始写库逻辑。
 - Story 4.5 应从 Sprint 2 开始维护，避免再次出现「工作流能跑通，但题目上下文不足导致答案错误」的问题。
+- Story 4.6 依赖 Story 2.3、2.6、3.7 和 4.4：后端需要在 Agent 工具层产生 `GeometryScene` 候选并执行辅助线增量渲染，前端继续通过 `figure_result` 展示生成图。
 
 ## 状态说明
 

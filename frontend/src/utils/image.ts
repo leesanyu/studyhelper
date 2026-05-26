@@ -1,9 +1,9 @@
 /**
- * 图片工具：选择 + Canvas 压缩（最大 1600px 长边，JPEG quality 85）
+ * 图片工具：选择 + Canvas 压缩（最大 3000px 长边，JPEG quality 92）
  */
 
-const MAX_DIMENSION = 1600
-const JPEG_QUALITY = 0.85
+const MAX_DIMENSION = 3000
+const JPEG_QUALITY = 0.92
 
 export interface ChooseImageResult {
   /** 压缩后的临时文件路径 */
@@ -14,13 +14,13 @@ export interface ChooseImageResult {
 
 /**
  * 选择图片并压缩。
- * H5 端使用 Canvas 压缩；非 H5 端直接使用 uni.chooseImage 的 compressed 选项。
+ * H5 端使用 Canvas 控制压缩；非 H5 端直接使用原图。
  */
 export function chooseAndCompressImage(): Promise<ChooseImageResult> {
   return new Promise((resolve, reject) => {
     uni.chooseImage({
       count: 1,
-      sizeType: ['compressed'],
+      sizeType: ['original'],
       sourceType: ['album', 'camera'],
       async success(res) {
         const originalPath = res.tempFilePaths[0]

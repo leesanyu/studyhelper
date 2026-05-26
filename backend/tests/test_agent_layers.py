@@ -9,8 +9,19 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.agent.layers import PlanResult, SolveResult, plan, solve
+from app.agent.layers import (
+    PlanResult,
+    SolveResult,
+    figure_point_location,
+    plan,
+    solve,
+)
 from app.agent.llm_client import ChatResponse, StreamEnd, TextDelta
+from app.agent.prompts import (
+    build_figure_overlay_draw_messages,
+    build_point_location_messages,
+    build_target_crop_messages,
+)
 
 
 def _mock_llm_client_chat_json(response_content):
@@ -303,3 +314,180 @@ class TestSolve:
         call_kwargs = client.stream_chat.call_args[1]
         last_msg = call_kwargs["messages"][-1]
         assert "process_question" in last_msg["content"]
+
+    @pytest.mark.asyncio
+    async def test_solve_structured_geometry_prompt_does_not_force_python_figure(self):
+        """结构化几何解题层不应再强制作图代码。"""
+        client = _mock_llm_client_stream(["```python:figure\nplt.plot([0], [0])\n```"])
+
+        await solve(
+            client,
+            strategy="direct_answer",
+            user_message="帮我解这道几何题",
+            current_geometry={
+                "version": "1.0",
+                "observations": {"points": [{"id": "A"}, {"id": "B"}]},
+                "given_relations": [],
+            },
+            tool_results={
+                "process_question": (
+                    '{"geometry_scene_candidate": {"version": "1.0", '
+                    '"observations": {"points": [{"id": "A"}, {"id": "B"}]}}}'
+                ),
+            },
+        )
+
+        call_kwargs = client.stream_chat.call_args[1]
+        joined = "\n".join(str(message["content"]) for message in call_kwargs["messages"])
+        assert "禁止输出 `python:figure` 代码块" not in joined
+        assert "必须生成 Python 绘图代码" not in joined
+        assert "注意标记为 python:figure" not in joined
+        assert "```python:figure" not in joined
+        assert "绘图由后置 Figure Agent" in joined
+        assert "【辅助线】" in joined
+
+    @pytest.mark.asyncio
+    async def test_solve_structured_geometry_prompt_respects_requested_grade_knowledge(self):
+        """结构化几何解答需要按用户指定年级和知识点组织证明。"""
+        client = _mock_llm_client_stream(["【辅助线】连接 AB。"])
+
+        await solve(
+            client,
+            strategy="direct_answer",
+            user_message="给出第二问的最终解答，要求使用七年级的全等知识",
+            current_geometry={
+                "version": "1.0",
+                "observations": {"points": [{"id": "A"}, {"id": "B"}]},
+                "given_relations": [],
+            },
+            tool_results={
+                "process_question": (
+                    '{"geometry_scene_candidate": {"version": "1.0", '
+                    '"observations": {"points": [{"id": "A"}, {"id": "B"}]}}}'
+                ),
+                "extract_knowledge": '{"knowledge_points": ["全等三角形的判定与性质"]}',
+            },
+        )
+
+        call_kwargs = client.stream_chat.call_args[1]
+        joined = "\n".join(str(message["content"]) for message in call_kwargs["messages"])
+        assert "用户指定年级" in joined
+        assert "全等" in joined
+        assert "不得把勾股定理或平方代数作为主证明" in joined
+
+    @pytest.mark.asyncio
+    async def test_solve_empty_structured_geometry_does_not_restore_legacy_python_figure_prompt(self):
+        """空结构化几何也不能恢复旧的强制 python:figure 提示。"""
+        client = _mock_llm_client_stream(["```python:figure\nplt.plot([0], [0])\n```"])
+
+        await solve(
+            client,
+            strategy="direct_answer",
+            user_message="帮我解这道几何题",
+            current_geometry={
+                "version": "1.0",
+                "observations": {"points": []},
+                "given_relations": [],
+            },
+            tool_results={
+                "process_question": (
+                    '{"geometry_scene_candidate": {"version": "1.0", '
+                    '"observations": {"points": []}}}'
+                ),
+            },
+        )
+
+        call_kwargs = client.stream_chat.call_args[1]
+        joined = "\n".join(str(message["content"]) for message in call_kwargs["messages"])
+        assert "禁止输出 `python:figure` 代码块" not in joined
+        assert "必须生成 Python 绘图代码" not in joined
+        assert "注意标记为 python:figure" not in joined
+        assert "```python:figure" not in joined
+
+
+class TestFigureOverlayTools:
+    """Figure Agent overlay 工具边界测试。"""
+
+    @pytest.mark.asyncio
+    async def test_point_location_filters_points_outside_requested_labels(self):
+        """点位定位只接受请求的原图点，避免 B' 误入图2 overlay。"""
+        client = _mock_llm_client_chat_json(json.dumps({
+            "points": {
+                "A": {"x": 80, "y": 120, "confidence": 0.95},
+                "B'": {"x": 10, "y": 25, "confidence": 0.9},
+            },
+            "warnings": [],
+        }))
+        client.model_for_scene = lambda scene: scene
+
+        result = await figure_point_location(
+            client,
+            image_base64="abc",
+            point_labels=["A", "B", "C"],
+            question_text="第（2）问",
+            diagram_description="图2",
+            solve_content="延长 AE 至 F",
+            figure_goal={},
+        )
+
+        assert result["points"] == {
+            "A": {"x": 80, "y": 120, "confidence": 0.95}
+        }
+        assert "ignored_unrequested_point:B'" in result["warnings"]
+        assert client.chat_json.call_args.kwargs["temperature"] == 0.0
+
+    def test_target_crop_prompt_requires_target_diagram_not_text_or_other_figures(self):
+        """裁剪 Prompt 必须明确目标是图2几何图，不是题干文字或图1。"""
+        messages = build_target_crop_messages(
+            image_base64="abc",
+            image_size=(3000, 2346),
+            question_text="第（2）问，如图2，求证 AH⊥BH",
+            diagram_description="含图1、图2和备用图",
+            solve_content="延长 AE 至 F",
+            figure_goal={
+                "target_diagram": "图2",
+                "original_figure_elements": ["点A, B, C, D, E, H"],
+            },
+        )
+
+        joined = "\n".join(str(message["content"]) for message in messages)
+        assert "不要截取题干文字" in joined
+        assert "不要截取图1" in joined
+        assert "必须包含目标图中的已有点标签" in joined
+        assert "原图像素尺寸：3000 x 2346" in joined
+
+    def test_point_location_prompt_requires_geometry_points_not_letter_text(self):
+        """点位定位 Prompt 必须要求坐标落在几何端点/交点，而不是字母文字本身。"""
+        messages = build_point_location_messages(
+            image_base64="abc",
+            image_size=(830, 832),
+            point_labels=["A", "B", "C"],
+            question_text="如图2，求证 AH⊥BH",
+            diagram_description="图2 包含 A、B、C、D、E、H",
+            solve_content="延长 AE 至点 F，使 EF=AE，连接 CF、BF。",
+            figure_goal={"target_diagram": "图2"},
+        )
+
+        joined = "\n".join(str(message["content"]) for message in messages)
+        assert "点位应落在线条交汇或端点处，不要落在字母文字本身" in joined
+        assert "裁剪图尺寸：830x832 像素" in joined
+        assert "完整解答" not in joined
+        assert "Goal Check" not in joined
+        assert "延长 AE 至点 F，使 EF=AE，连接 CF、BF" not in joined
+
+    def test_overlay_draw_prompt_requires_supported_operation_schema(self):
+        """Draw Prompt 必须给出 renderer 支持的 op schema，减少无效 type/segment 输出。"""
+        messages = build_figure_overlay_draw_messages(
+            question_text="第（2）问",
+            diagram_description="图2",
+            solve_content="延长 AE 至点 F，使 EF=AE，连接 CF、BF。",
+            figure_goal={},
+            target_diagram={},
+            localized_points={"A": {"x": 1, "y": 2}, "E": {"x": 3, "y": 2}},
+            auxiliary_text="延长 AE 至点 F，使 EF=AE，连接 CF、BF。",
+        )
+
+        joined = "\n".join(str(message["content"]) for message in messages)
+        assert '"op": "point_on_segment_by_distance"' in joined
+        assert '"op": "connect_points"' in joined
+        assert "不要输出 type/segment/name/construction 这种自然语言 schema" in joined

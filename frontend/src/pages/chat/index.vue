@@ -54,7 +54,7 @@
                 <!-- 工具结果摘要 -->
                 <view v-if="msg.tool_results && msg.tool_results.length" class="bubble-tool-results">
                   <view v-for="(tr, idx) in msg.tool_results" :key="idx" class="tool-result-item">
-                    <text class="tool-result-label">{{ tr.tool === 'process_question' ? '题目识别' : '知识点' }}</text>
+                    <text class="tool-result-label">{{ formatToolLabel(tr.tool) }}</text>
                     <text class="tool-result-text">
                       {{ formatToolResult(tr) }}
                     </text>
@@ -67,13 +67,41 @@
                   :figure-results="msg.figure_results"
                   :message-ended="msg.message_ended"
                 />
-                <!-- 反思修正提示 -->
-                <view v-if="msg.reflexion_message" class="bubble-reflexion">
-                  <text class="reflexion-text">{{ msg.reflexion_message }}</text>
+                <view v-if="standaloneFigureResults(msg).length" class="generated-figures">
+                  <image
+                    v-for="fig in standaloneFigureResults(msg)"
+                    :key="fig.asset_id || fig.image_url"
+                    :src="fig.image_url"
+                    class="generated-figure-image"
+                    mode="widthFix"
+                    @click="previewFigure(fig.image_url, standaloneFigureResults(msg))"
+                  />
+                </view>
+                <view v-if="msg.post_answer_status" class="bubble-post-answer-status">
+                  <view class="thinking-dots">
+                    <text class="thinking-dot">●</text>
+                    <text class="thinking-dot">●</text>
+                    <text class="thinking-dot">●</text>
+                  </view>
+                  <text class="post-answer-status-text">{{ msg.post_answer_status }}</text>
+                </view>
+                <!-- 透明自检结果 -->
+                <view v-if="msg.reflexion_results && msg.reflexion_results.length" class="bubble-reflexion">
+                  <view
+                    v-for="(result, idx) in msg.reflexion_results"
+                    :key="idx"
+                    class="reflexion-item"
+                  >
+                    <text class="reflexion-title">{{ formatReflexionStatus(result.status) }}</text>
+                    <text class="reflexion-text">{{ result.visible_message }}</text>
+                    <text v-if="result.corrected_content" class="reflexion-correction">
+                      {{ result.corrected_content }}
+                    </text>
+                  </view>
                 </view>
                 <!-- 反馈按钮：仅对最后一条已完成的 AI 消息显示 -->
                 <FeedbackButtons
-                  v-if="isLastAiMessage(msg.id) && !isLoading"
+                  v-if="canShowFeedback(msg)"
                   :disabled="isLoading"
                   @send="sendFeedback"
                 />
@@ -151,6 +179,15 @@ function isLastAiMessage(msgId: string): boolean {
   return aiMessages.length > 0 && aiMessages[aiMessages.length - 1].id === msgId
 }
 
+function canShowFeedback(msg: ChatMessage): boolean {
+  return (
+    isLastAiMessage(msg.id)
+    && !isLoading.value
+    && msg.message_completed === true
+    && !msg.post_answer_status
+  )
+}
+
 /** 反馈按钮点击：直接发送自然语言消息，Agent 规划层自动识别策略 */
 async function sendFeedback(message: string) {
   inputText.value = message
@@ -173,6 +210,31 @@ function onScrollToUpper() {
 
 function previewImage(current: string, urls: string[]) {
   uni.previewImage({ current, urls })
+}
+
+function previewFigure(current: string, figures: Array<{ image_url: string }>) {
+  uni.previewImage({ current, urls: figures.map((fig) => fig.image_url) })
+}
+
+function standaloneFigureResults(msg: ChatMessage) {
+  if (!msg.figure_results || msg.figure_results.length === 0) return []
+  if (msg.content.includes('```python:figure')) return []
+  return msg.figure_results
+}
+
+function shouldShowPostAnswerFigureStatus(aiMsg: ChatMessage, userMsg: ChatMessage): boolean {
+  const hasUploadedImage = (userMsg.asset_ids?.length || 0) > 0
+  const content = aiMsg.content || ''
+  return (
+    hasUploadedImage
+    || content.includes('辅助线')
+    || content.includes('```python:figure')
+  )
+}
+
+function findAssistantMessageByBackendId(messageId?: string, fallback?: ChatMessage) {
+  if (!messageId) return fallback
+  return messages.value.find((msg) => msg.role === 'assistant' && msg.message_id === messageId) || fallback
 }
 
 async function chooseImage() {
@@ -203,6 +265,21 @@ function newMessageId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
+function formatToolLabel(tool: string): string {
+  if (tool === 'process_question') return '题目识别'
+  if (tool === 'extract_knowledge') return '知识点'
+  if (tool === 'geometry_validator') return '几何图校验'
+  return '工具结果'
+}
+
+function formatReflexionStatus(status: string): string {
+  if (status === 'passed') return '自检通过'
+  if (status === 'corrected') return '自检修正'
+  if (status === 'unreliable') return '自检未通过'
+  if (status === 'failed') return '自检未完成'
+  return '自检结果'
+}
+
 /** 格式化工具结果为可读文本 */
 function formatToolResult(tr: { tool: string; data: Record<string, unknown> }): string {
   if (tr.tool === 'process_question') {
@@ -219,6 +296,17 @@ function formatToolResult(tr: { tool: string; data: Record<string, unknown> }): 
       return points.join('、')
     }
     return String(d.difficulty || '已提取')
+  }
+  if (tr.tool === 'geometry_validator') {
+    const d = tr.data
+    if (d.status === 'failed') {
+      return `几何图校验未通过：${String(d.message || '无法生成可靠图形')}`
+    }
+    return String(d.message || '已校验')
+  }
+  if (tr.tool === 'figure_agent') {
+    const d = tr.data
+    return String(d.message || '辅助线处理完成')
   }
   return '完成'
 }
@@ -258,7 +346,9 @@ async function sendMessage() {
     thinking_message: '',
     tool_results: [],
     figure_results: [],
-    reflexion_message: '',
+    reflexion_results: [],
+    message_completed: false,
+    post_answer_status: '',
   })
   isLoading.value = true
   scrollToBottom()
@@ -280,7 +370,15 @@ async function sendMessage() {
   }
 
   // 启动 SSE 流式请求
-  currentAbortController = streamChat(
+  let requestController: ReturnType<typeof streamChat> | null = null
+  const finishActiveRequest = () => {
+    if (currentAbortController === requestController) {
+      isLoading.value = false
+      currentAbortController = null
+    }
+  }
+
+  requestController = streamChat(
     {
       session_id: sessionId.value,
       message: text || '（图片）',
@@ -301,8 +399,16 @@ async function sendMessage() {
         scrollToBottom()
       },
       onToolResult(data) {
-        aiMsg.tool_results ||= []
-        aiMsg.tool_results.push(data)
+        const targetMsg = findAssistantMessageByBackendId(
+          typeof data.data.message_id === 'string' ? data.data.message_id : undefined,
+          aiMsg,
+        )
+        if (!targetMsg) return
+        targetMsg.tool_results ||= []
+        targetMsg.tool_results.push(data)
+        if (data.tool === 'figure_agent') {
+          targetMsg.post_answer_status = ''
+        }
         scrollToBottom()
       },
       onDelta(data) {
@@ -310,18 +416,38 @@ async function sendMessage() {
         aiMsg.content += data.text
         scrollToBottom()
       },
-      onFigureResult(data) {
-        aiMsg.figure_results ||= []
-        aiMsg.figure_results.push(data)
+      onAnswerEnd(data) {
+        if (data.session_id && data.session_id !== 'local-session') {
+          sessionId.value = data.session_id
+        }
+        aiMsg.thinking_message = ''
+        if (shouldShowPostAnswerFigureStatus(aiMsg, userMsg)) {
+          aiMsg.post_answer_status = '答案已生成，正在处理辅助线图…'
+        }
+        finishActiveRequest()
+        scrollToBottom()
       },
-      onReflexionPatch(data) {
-        aiMsg.reflexion_message = data.message
+      onFigureResult(data) {
+        const targetMsg = findAssistantMessageByBackendId(data.message_id, aiMsg)
+        if (!targetMsg) return
+        targetMsg.figure_results ||= []
+        targetMsg.figure_results.push(data)
+        targetMsg.post_answer_status = ''
+        scrollToBottom()
+      },
+      onReflexionResult(data) {
+        const targetMsg = findAssistantMessageByBackendId(data.message_id, aiMsg)
+        if (!targetMsg) return
+        targetMsg.reflexion_results ||= []
+        targetMsg.reflexion_results.push(data)
+        scrollToBottom()
       },
       onMessageEnd(data) {
         if (data.message_id) aiMsg.message_id = data.message_id
         aiMsg.thinking_message = ''
-        isLoading.value = false
-        currentAbortController = null
+        aiMsg.post_answer_status = ''
+        aiMsg.message_completed = true
+        finishActiveRequest()
         scrollToBottom()
         // 5 秒后标记 message_ended，触发 MarkdownRenderer 将未收到 figure_result 的块标为 failed
         setTimeout(() => {
@@ -331,19 +457,22 @@ async function sendMessage() {
       onError(data) {
         aiMsg.loading = false
         aiMsg.thinking_message = ''
+        aiMsg.post_answer_status = ''
+        aiMsg.message_completed = true
         aiMsg.error = data.message || 'AI 回复出错'
-        isLoading.value = false
-        currentAbortController = null
+        finishActiveRequest()
       },
       onNetworkError(err) {
         aiMsg.loading = false
         aiMsg.thinking_message = ''
+        aiMsg.post_answer_status = ''
+        aiMsg.message_completed = true
         aiMsg.error = err.message || '网络连接失败，请重试'
-        isLoading.value = false
-        currentAbortController = null
+        finishActiveRequest()
       },
     },
   )
+  currentAbortController = requestController
 }
 </script>
 
@@ -477,14 +606,49 @@ async function sendMessage() {
 
 .bubble-reflexion {
   margin-top: 6px;
-  padding: 4px 8px;
+  padding: 6px 8px;
   background-color: #fff7e6;
   border-radius: 4px;
+}
+
+.bubble-post-answer-status {
+  margin-top: 8px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #f6f9ff;
+  border: 1px solid #dbe8ff;
+  border-radius: 6px;
+}
+
+.post-answer-status-text {
+  font-size: 12px;
+  color: #2B5CAD;
+}
+
+.reflexion-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reflexion-title {
+  font-size: 12px;
+  color: #ad6800;
+  font-weight: 600;
 }
 
 .reflexion-text {
   font-size: 12px;
   color: #d48806;
+}
+
+.reflexion-correction {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #5f3b00;
+  white-space: pre-wrap;
 }
 
 .bubble-loading {
@@ -519,6 +683,21 @@ async function sendMessage() {
   width: 120px;
   height: 120px;
   border-radius: 8px;
+}
+
+.generated-figures {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.generated-figure-image {
+  width: 100%;
+  max-width: 520px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background-color: #fff;
 }
 
 .input-bar {

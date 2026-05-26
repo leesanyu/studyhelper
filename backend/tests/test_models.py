@@ -26,6 +26,7 @@ def test_core_tables_support_chat_and_asset_persistence():
             current_question="求角度关系",
             current_diagram="A, B, C are connected",
             current_knowledge={"subject": "初中数学", "points": ["角平分线"]},
+            current_geometry={"version": "1.0", "given_relations": []},
         )
         session.add(chat_session)
         session.flush()
@@ -81,6 +82,7 @@ def test_core_tables_support_chat_and_asset_persistence():
         ).scalar_one()
 
     assert stored_session.current_knowledge["subject"] == "初中数学"
+    assert stored_session.current_geometry["version"] == "1.0"
     assert stored_message.knowledge_points == ["角平分线"]
     assert stored_asset.session_id == stored_session.id
     assert stored_asset.message_id == stored_message.id

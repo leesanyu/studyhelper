@@ -39,7 +39,7 @@ def _make_settings(**overrides) -> Settings:
         "llm_model_reflexion": "qwen3.6-plus",
         "llm_model_reflexion_url": None,
         "llm_model_reflexion_key": None,
-        "llm_model_vision": "qwen-vl-max",
+        "llm_model_vision": "qwen-vl-max-latest",
         "llm_model_vision_url": None,
         "llm_model_vision_key": None,
         "llm_model_knowledge": "qwen3.6-plus",
@@ -68,7 +68,7 @@ class TestResolveModelConfig:
         """vision 场景使用不同的模型名。"""
         settings = _make_settings()
         model, url, key = _resolve_model_config(settings, "vision")
-        assert model == "qwen-vl-max"
+        assert model == "qwen-vl-max-latest"
         assert url == "https://api.example.com/v1"
         assert key == "sk-test-key"
 
@@ -201,7 +201,7 @@ class TestLLMClientChat:
             )
 
         call_kwargs = mock_openai.chat.completions.create.call_args[1]
-        assert call_kwargs["model"] == "qwen-vl-max"
+        assert call_kwargs["model"] == "qwen-vl-max-latest"
 
 
 class TestLLMClientStreamChat:
@@ -341,5 +341,5 @@ class TestLLMClientVisionMessages:
 
         call_kwargs = mock_openai.chat.completions.create.call_args[1]
         assert call_kwargs["messages"] == messages
-        assert call_kwargs["model"] == "qwen-vl-max"
+        assert call_kwargs["model"] == "qwen-vl-max-latest"
         assert result.content == "这是一道数学题"

@@ -16,14 +16,25 @@ export interface ChatMessage {
   message_id?: string
   /** message_end 已到达，用于触发 figure 块超时检查 */
   message_ended?: boolean
+  /** message_end 已到达，表示后置反思 / 辅助线等流程已结束，可展示反馈按钮 */
+  message_completed?: boolean
+  /** 文字答案结束后、后置流程结束前展示的状态提示 */
+  post_answer_status?: string
   /** 收到的 figure_result 事件列表（Story 3.7+4.4 处理） */
-  figure_results?: Array<{ asset_id: string; image_url: string }>
+  figure_results?: Array<{ asset_id: string; image_url: string; message_id?: string }>
+  /** 收到的透明自检结果 */
+  reflexion_results?: Array<{
+    status: string
+    visible_message: string
+    corrected_content?: string
+    issues?: string[]
+    figure_guidance?: string
+    message_id?: string
+  }>
   /** 当前 thinking 步骤提示（如"分析题目中..."） */
   thinking_message?: string
   /** 收到的 tool_result 事件列表 */
   tool_results?: Array<{ tool: string; data: Record<string, unknown> }>
-  /** 收到的 reflexion_patch 事件 */
-  reflexion_message?: string
 }
 
 export interface ChatCompletionRequest {

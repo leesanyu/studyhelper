@@ -16,6 +16,7 @@ class FakeChatService:
     async def stream_chat(self, request: ChatCompletionRequest):
         yield {"event": "message_start", "data": {"session_id": request.session_id or "s1"}}
         yield {"event": "delta", "data": {"text": "第一步"}}
+        yield {"event": "answer_end", "data": {"session_id": request.session_id or "s1"}}
         yield {
             "event": "message_end",
             "data": {
@@ -54,7 +55,8 @@ async def test_chat_completions_streams_normalized_sse_events():
     assert [payload["event"] for payload in payloads] == [
         "message_start",
         "delta",
+        "answer_end",
         "message_end",
     ]
     assert payloads[1]["data"]["text"] == "第一步"
-    assert payloads[2]["data"]["message_id"] == "m1"
+    assert payloads[3]["data"]["message_id"] == "m1"

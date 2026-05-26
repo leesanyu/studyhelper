@@ -115,21 +115,25 @@ async def test_session_context_update_always_overwrites():
         current_question="求角 A",
         current_diagram="AB 与 CD 相交",
         current_knowledge={"points": ["对顶角"]},
+        current_geometry={"version": "1.0", "given_relations": []},
     )
 
     detail = await service.get_session(session["session_id"])
     assert detail["current_question"] == "求角 A"
     assert detail["current_diagram"] == "AB 与 CD 相交"
     assert detail["current_knowledge"] == {"points": ["对顶角"]}
+    assert detail["current_geometry"] == {"version": "1.0", "given_relations": []}
 
     await service.update_context(
         session["session_id"],
         current_question="新问题",
         current_diagram="新图",
         current_knowledge={"points": ["新知识点"]},
+        current_geometry=None,
     )
 
     detail = await service.get_session(session["session_id"])
     assert detail["current_question"] == "新问题"
     assert detail["current_diagram"] == "新图"
     assert detail["current_knowledge"] == {"points": ["新知识点"]}
+    assert detail["current_geometry"] is None

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.agent.llm_client import ChatResponse
+from app.agent.prompts import build_process_question_messages
 from app.agent.tools import (
     KnowledgeResult,
     QuestionResult,
@@ -113,6 +114,43 @@ class TestProcessQuestion:
         content = user_msg["content"]
         assert isinstance(content, list)
         assert any(item.get("type") == "image_url" for item in content)
+
+    @pytest.mark.asyncio
+    async def test_process_question_preserves_visual_observation(self):
+        """题图识别保留 visual_observation，供几何归一化使用。"""
+        response_json = json.dumps({
+            "subject": "初中数学",
+            "question_text": "如图，连接 AB。",
+            "has_figure": True,
+            "diagram_description": "线段 AB",
+            "visual_observation": {
+                "points": [{"id": "A"}, {"id": "B"}],
+                "drawn_segments": [{"endpoints": ["A", "B"]}],
+                "marks": [],
+                "uncertain": [],
+            },
+            "question_count": 1,
+        })
+        client = _mock_llm_client(response_json)
+
+        result = await process_question(client, image_base64="iVBOR...")
+
+        assert result.visual_observation == {
+            "points": [{"id": "A"}, {"id": "B"}],
+            "drawn_segments": [{"endpoints": ["A", "B"]}],
+            "marks": [],
+            "uncertain": [],
+        }
+        assert result.geometry_scene_candidate is None
+
+    def test_process_question_prompt_requires_visual_observation_for_figures(self):
+        """题图识别 Prompt 必须要求输出 visual_observation。"""
+        messages = build_process_question_messages(image_base64="iVBOR...")
+        system_prompt = messages[0]["content"]
+
+        assert "必须填写 visual_observation 对象" in system_prompt
+        assert '"visual_observation":' in system_prompt
+        assert "drawn_segments" in system_prompt
 
 
 class TestExtractKnowledge:

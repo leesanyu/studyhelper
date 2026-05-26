@@ -6,8 +6,9 @@
  *   data: {"event": "thinking",    "data": {"type": "...", "message": "..."}}\n\n
  *   data: {"event": "tool_result", "data": {"tool": "...", "data": {...}}}\n\n
  *   data: {"event": "delta",       "data": {"text": "...", "session_id": "..."}}\n\n
- *   data: {"event": "figure_result","data": {"asset_id": "...", "image_url": "..."}}\n\n
- *   data: {"event": "reflexion_patch","data": {"message": "..."}}\n\n
+ *   data: {"event": "answer_end",  "data": {"session_id": "..."}}\n\n
+ *   data: {"event": "reflexion_result","data": {"status": "...", "visible_message": "...", "message_id": "..."}}\n\n
+ *   data: {"event": "figure_result","data": {"asset_id": "...", "image_url": "...", "message_id": "..."}}\n\n
  *   data: {"event": "message_end", "data": {"session_id": "...", "message_id": "..."}}\n\n
  *   data: {"event": "error",       "data": {"code": "...", "message": "..."}}\n\n
  */
@@ -34,14 +35,26 @@ export interface SseDelta {
   data: { text: string; session_id: string }
 }
 
-export interface SseFigureResult {
-  event: 'figure_result'
-  data: { asset_id: string; image_url: string }
+export interface SseAnswerEnd {
+  event: 'answer_end'
+  data: { session_id: string }
 }
 
-export interface SseReflexionPatch {
-  event: 'reflexion_patch'
-  data: { message: string }
+export interface SseFigureResult {
+  event: 'figure_result'
+  data: { asset_id: string; image_url: string; message_id?: string }
+}
+
+export interface SseReflexionResult {
+  event: 'reflexion_result'
+  data: {
+    status: 'passed' | 'corrected' | 'unreliable' | 'failed' | string
+    visible_message: string
+    corrected_content?: string
+    issues?: string[]
+    figure_guidance?: string
+    message_id?: string
+  }
 }
 
 export interface SseMessageEnd {
@@ -59,8 +72,9 @@ export type SseEvent =
   | SseThinking
   | SseToolResult
   | SseDelta
+  | SseAnswerEnd
   | SseFigureResult
-  | SseReflexionPatch
+  | SseReflexionResult
   | SseMessageEnd
   | SseError
 
@@ -69,8 +83,9 @@ export interface SseCallbacks {
   onThinking?: (data: SseThinking['data']) => void
   onToolResult?: (data: SseToolResult['data']) => void
   onDelta?: (data: SseDelta['data']) => void
+  onAnswerEnd?: (data: SseAnswerEnd['data']) => void
   onFigureResult?: (data: SseFigureResult['data']) => void
-  onReflexionPatch?: (data: SseReflexionPatch['data']) => void
+  onReflexionResult?: (data: SseReflexionResult['data']) => void
   onMessageEnd?: (data: SseMessageEnd['data']) => void
   onError?: (data: SseError['data']) => void
   onNetworkError?: (err: Error) => void
@@ -163,11 +178,14 @@ function dispatchEvent(evt: SseEvent, callbacks: SseCallbacks) {
     case 'delta':
       callbacks.onDelta?.(evt.data)
       break
+    case 'answer_end':
+      callbacks.onAnswerEnd?.(evt.data)
+      break
     case 'figure_result':
       callbacks.onFigureResult?.(evt.data)
       break
-    case 'reflexion_patch':
-      callbacks.onReflexionPatch?.(evt.data)
+    case 'reflexion_result':
+      callbacks.onReflexionResult?.(evt.data)
       break
     case 'message_end':
       callbacks.onMessageEnd?.(evt.data)

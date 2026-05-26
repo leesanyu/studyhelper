@@ -15,6 +15,8 @@ from app.models.user import User
 from app.services.messages import ChatMessageCreate
 from app.schemas.sessions import SessionCreateRequest
 
+_UNSET = object()
+
 
 class SessionService(Protocol):
     async def create_session(self, request: SessionCreateRequest) -> dict:
@@ -35,10 +37,14 @@ class ChatSessionRepository(Protocol):
         self,
         session_id: str,
         *,
-        current_question: str | None = None,
-        current_diagram: str | None = None,
-        current_knowledge: dict | None = None,
+        current_question: str | None | object = _UNSET,
+        current_diagram: str | None | object = _UNSET,
+        current_knowledge: dict | None | object = _UNSET,
+        current_geometry: dict | None | object = _UNSET,
     ) -> None:
+        ...
+
+    async def rollback(self) -> None:
         ...
 
 
@@ -62,6 +68,7 @@ class InMemorySessionService:
             "current_question": None,
             "current_diagram": None,
             "current_knowledge": None,
+            "current_geometry": None,
         }
         self._sessions[session_id] = session
         self._order.insert(0, session_id)
@@ -106,15 +113,24 @@ class InMemorySessionService:
         self,
         session_id: str,
         *,
-        current_question: str | None = None,
-        current_diagram: str | None = None,
-        current_knowledge: dict | None = None,
+        current_question: str | None | object = _UNSET,
+        current_diagram: str | None | object = _UNSET,
+        current_knowledge: dict | None | object = _UNSET,
+        current_geometry: dict | None | object = _UNSET,
     ) -> None:
         session = self._sessions[session_id]
-        session["current_question"] = current_question
-        session["current_diagram"] = current_diagram
-        session["current_knowledge"] = current_knowledge
+        if current_question is not _UNSET:
+            session["current_question"] = current_question
+        if current_diagram is not _UNSET:
+            session["current_diagram"] = current_diagram
+        if current_knowledge is not _UNSET:
+            session["current_knowledge"] = current_knowledge
+        if current_geometry is not _UNSET:
+            session["current_geometry"] = current_geometry
         self._touch_session(session_id)
+
+    async def rollback(self) -> None:
+        return None
 
 
 class SqlAlchemySessionService:
@@ -145,6 +161,10 @@ class SqlAlchemySessionService:
             "last_message": None,
             "subject": None,
             "knowledge_points": [],
+            "current_question": row.current_question,
+            "current_diagram": row.current_diagram,
+            "current_knowledge": row.current_knowledge,
+            "current_geometry": row.current_geometry,
         }
 
     async def list_sessions(self, client_user_id: str) -> list[dict]:
@@ -176,6 +196,10 @@ class SqlAlchemySessionService:
             "client_user_id": user.anonymous_id if user else "anonymous",
             "asset_ids": asset_ids,
             "messages": messages,
+            "current_question": session.current_question,
+            "current_diagram": session.current_diagram,
+            "current_knowledge": session.current_knowledge,
+            "current_geometry": session.current_geometry,
         }
 
     async def _get_or_create_user(self, client_user_id: str) -> User:
@@ -235,20 +259,28 @@ class SqlAlchemySessionService:
         self,
         session_id: str,
         *,
-        current_question: str | None = None,
-        current_diagram: str | None = None,
-        current_knowledge: dict | None = None,
+        current_question: str | None | object = _UNSET,
+        current_diagram: str | None | object = _UNSET,
+        current_knowledge: dict | None | object = _UNSET,
+        current_geometry: dict | None | object = _UNSET,
     ) -> None:
+        values = _context_values(
+            current_question=current_question,
+            current_diagram=current_diagram,
+            current_knowledge=current_knowledge,
+            current_geometry=current_geometry,
+        )
+        if not values:
+            return
         await self._session.execute(
             update(ChatSession)
             .where(ChatSession.id == session_id)
-            .values(
-                current_question=current_question,
-                current_diagram=current_diagram,
-                current_knowledge=current_knowledge,
-            )
+            .values(**values)
         )
         await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()
 
 
 class SqlAlchemyChatSessionRepository:
@@ -270,23 +302,51 @@ class SqlAlchemyChatSessionRepository:
             "current_question": row.current_question,
             "current_diagram": row.current_diagram,
             "current_knowledge": row.current_knowledge,
+            "current_geometry": row.current_geometry,
         }
 
     async def update_context(
         self,
         session_id: str,
         *,
-        current_question: str | None = None,
-        current_diagram: str | None = None,
-        current_knowledge: dict | None = None,
+        current_question: str | None | object = _UNSET,
+        current_diagram: str | None | object = _UNSET,
+        current_knowledge: dict | None | object = _UNSET,
+        current_geometry: dict | None | object = _UNSET,
     ) -> None:
+        values = _context_values(
+            current_question=current_question,
+            current_diagram=current_diagram,
+            current_knowledge=current_knowledge,
+            current_geometry=current_geometry,
+        )
+        if not values:
+            return
         await self._session.execute(
             update(ChatSession)
             .where(ChatSession.id == session_id)
-            .values(
-                current_question=current_question,
-                current_diagram=current_diagram,
-                current_knowledge=current_knowledge,
-            )
+            .values(**values)
         )
         await self._session.commit()
+
+    async def rollback(self) -> None:
+        await self._session.rollback()
+
+
+def _context_values(
+    *,
+    current_question: str | None | object = _UNSET,
+    current_diagram: str | None | object = _UNSET,
+    current_knowledge: dict | None | object = _UNSET,
+    current_geometry: dict | None | object = _UNSET,
+) -> dict:
+    values = {}
+    if current_question is not _UNSET:
+        values["current_question"] = current_question
+    if current_diagram is not _UNSET:
+        values["current_diagram"] = current_diagram
+    if current_knowledge is not _UNSET:
+        values["current_knowledge"] = current_knowledge
+    if current_geometry is not _UNSET:
+        values["current_geometry"] = current_geometry
+    return values

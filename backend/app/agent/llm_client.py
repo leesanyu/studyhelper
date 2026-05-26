@@ -67,6 +67,11 @@ _MODEL_SCENES = (
     "reflexion",
     "vision",
     "knowledge",
+    "figure_trigger",
+    "figure_goal",
+    "figure_draw",
+    "figure_revision",
+    "figure_semantic_inspection",
 )
 
 
@@ -119,6 +124,10 @@ class LLMClient:
         """获取指定场景的模型名称。"""
         model_name, _, _ = _resolve_model_config(self._settings, scene)
         return model_name
+
+    def model_for_scene(self, scene: str) -> str:
+        """暴露指定场景的模型名称，供 trace 记录。"""
+        return self._get_model(scene)
 
     # ── 非流式聊天 ───────────────────────────────────────────────
 

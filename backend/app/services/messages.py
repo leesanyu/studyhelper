@@ -28,6 +28,9 @@ class ChatMessageRepository(Protocol):
     async def create_message(self, message: ChatMessageCreate) -> dict:
         ...
 
+    async def rollback(self) -> None:
+        ...
+
 
 class InMemoryChatMessageRepository:
     def __init__(self) -> None:
@@ -39,6 +42,9 @@ class InMemoryChatMessageRepository:
         self.messages.append(payload)
         self._record_tags(message)
         return payload
+
+    async def rollback(self) -> None:
+        return None
 
     def _record_tags(self, message: ChatMessageCreate) -> None:
         subject = message.raw_metadata.get("subject")
@@ -116,3 +122,6 @@ class SqlAlchemyChatMessageRepository:
                     source="agent",
                 )
             )
+
+    async def rollback(self) -> None:
+        await self._session.rollback()

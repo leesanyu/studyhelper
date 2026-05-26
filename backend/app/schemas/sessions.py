@@ -28,3 +28,7 @@ class SessionDetailResponse(SessionSummary):
     client_user_id: str
     asset_ids: list[str] = Field(default_factory=list)
     messages: list[dict] = Field(default_factory=list)
+    current_question: str | None = None
+    current_diagram: str | None = None
+    current_knowledge: dict | None = None
+    current_geometry: dict | None = None

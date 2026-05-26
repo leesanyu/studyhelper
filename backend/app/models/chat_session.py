@@ -20,6 +20,7 @@ class ChatSession(IdMixin, TimestampMixin, Base):
     current_question: Mapped[str | None] = mapped_column(Text)
     current_diagram: Mapped[str | None] = mapped_column(Text)
     current_knowledge: Mapped[dict | None] = mapped_column(JSON)
+    current_geometry: Mapped[dict | None] = mapped_column(JSON)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user = relationship("User", back_populates="sessions")

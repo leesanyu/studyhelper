@@ -36,6 +36,9 @@ class AssetRepository(Protocol):
     async def get_assets_by_ids(self, asset_ids: list[str]) -> list[dict]:
         ...
 
+    async def rollback(self) -> None:
+        ...
+
 
 class InMemoryAssetRepository:
     def __init__(self) -> None:
@@ -48,6 +51,9 @@ class InMemoryAssetRepository:
 
     async def get_assets_by_ids(self, asset_ids: list[str]) -> list[dict]:
         return [self.assets[asset_id] for asset_id in asset_ids if asset_id in self.assets]
+
+    async def rollback(self) -> None:
+        return None
 
 
 class SqlAlchemyAssetRepository:
@@ -101,3 +107,6 @@ class SqlAlchemyAssetRepository:
             for asset_id in asset_ids
             if (row := rows_by_id.get(asset_id)) is not None
         ]
+
+    async def rollback(self) -> None:
+        await self._session.rollback()

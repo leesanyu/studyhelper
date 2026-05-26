@@ -43,9 +43,9 @@ class ImageUploadService:
         asset_repository: AssetRepository,
         storage: AssetStorage,
         max_bytes: int = 20 * 1024 * 1024,
-        max_image_dimension: int = 1600,
-        jpeg_quality: int = 85,
-        webp_quality: int = 85,
+        max_image_dimension: int = 3000,
+        jpeg_quality: int = 92,
+        webp_quality: int = 92,
     ) -> None:
         self._asset_repository = asset_repository
         self._storage = storage

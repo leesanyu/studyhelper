@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import Any
 
 from app.agent.llm_client import LLMClient
 from app.agent.prompts import (
@@ -35,6 +36,8 @@ class QuestionResult:
     has_figure: bool
     diagram_description: str
     question_count: int
+    visual_observation: dict[str, Any] | None = None
+    geometry_scene_candidate: dict[str, Any] | None = None
     usage: dict[str, int] | None = None
 
 
@@ -80,6 +83,11 @@ async def process_question(
         has_figure=bool(data.get("has_figure", False)),
         diagram_description=str(data.get("diagram_description", "")),
         question_count=int(data.get("question_count", 1)),
+        visual_observation=(
+            data.get("visual_observation")
+            if isinstance(data.get("visual_observation"), dict)
+            else None
+        ),
         usage=response.usage or {},
     )
 
